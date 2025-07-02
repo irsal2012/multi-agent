@@ -70,6 +70,22 @@ def show_code_generator():
     
     st.header("🚀 Generate Your Application")
     
+    # Quick Examples (outside form)
+    st.subheader("Quick Examples")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("📊 Data Analysis Tool", use_container_width=True):
+            st.session_state.example_input = "Create a data analysis tool that reads CSV files, performs statistical analysis, generates visualizations, and exports reports in PDF format."
+    
+    with col2:
+        if st.button("🌐 Web API", use_container_width=True):
+            st.session_state.example_input = "Build a REST API for a task management system with user authentication, CRUD operations for tasks, and email notifications."
+    
+    with col3:
+        if st.button("🤖 Chatbot", use_container_width=True):
+            st.session_state.example_input = "Create an intelligent chatbot that can answer questions about a knowledge base, with conversation history and context awareness."
+    
     # Input form
     with st.form("code_generation_form"):
         st.subheader("Describe Your Project")
@@ -77,8 +93,15 @@ def show_code_generator():
         col1, col2 = st.columns([3, 1])
         
         with col1:
+            # Use example if selected
+            default_input = ""
+            if 'example_input' in st.session_state:
+                default_input = st.session_state.example_input
+                del st.session_state.example_input
+            
             user_input = st.text_area(
                 "What would you like to build?",
+                value=default_input,
                 placeholder="Example: Create a web scraper that extracts product information from e-commerce websites, stores the data in a database, and provides a REST API to query the results.",
                 height=150,
                 help="Provide a detailed description of the application you want to build. Include functionality, data sources, user interactions, and any specific requirements."
@@ -90,21 +113,6 @@ def show_code_generator():
                 placeholder="my-awesome-project",
                 help="If not provided, a timestamp-based name will be generated."
             )
-            
-            st.markdown("### Quick Examples")
-            if st.button("📊 Data Analysis Tool", use_container_width=True):
-                st.session_state.example_input = "Create a data analysis tool that reads CSV files, performs statistical analysis, generates visualizations, and exports reports in PDF format."
-            
-            if st.button("🌐 Web API", use_container_width=True):
-                st.session_state.example_input = "Build a REST API for a task management system with user authentication, CRUD operations for tasks, and email notifications."
-            
-            if st.button("🤖 Chatbot", use_container_width=True):
-                st.session_state.example_input = "Create an intelligent chatbot that can answer questions about a knowledge base, with conversation history and context awareness."
-        
-        # Use example if selected
-        if 'example_input' in st.session_state:
-            user_input = st.session_state.example_input
-            del st.session_state.example_input
         
         # Validation
         if user_input:
