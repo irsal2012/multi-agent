@@ -1,355 +1,238 @@
-# Multi-Agent Code Generator Framework
+# Multi-Agent Code Generator - Refactored Architecture
 
-🤖 Transform your ideas into complete Python applications using our AI-powered multi-agent system built with AutoGen.
+A sophisticated multi-agent framework that transforms natural language descriptions into complete Python applications using specialized AI agents. This project has been refactored to separate business logic from the frontend using a FastAPI backend and clean Streamlit frontend.
 
-## Overview
+## 🏗️ Architecture Overview
 
-This framework uses multiple specialized AI agents to collaboratively develop complete software applications from natural language descriptions. Each agent has a specific role in the software development lifecycle, working together to produce production-ready code, documentation, tests, and deployment configurations.
+The system now follows a clean separation of concerns with a backend/frontend architecture:
 
-## Features
-
-- **📋 Requirements Analysis**: Converts natural language into structured software requirements
-- **💻 Code Generation**: Creates production-ready Python code with best practices
-- **🔍 Code Review**: Automated code review for quality, security, and optimization
-- **📚 Documentation**: Comprehensive documentation generation
-- **🧪 Test Generation**: Automated test case creation with high coverage
-- **🚀 Deployment**: Docker containers and CI/CD pipeline configurations
-- **🎨 UI Generation**: Streamlit web interface creation
-- **🌐 Web Interface**: Beautiful Streamlit dashboard for easy interaction
-- **💻 CLI Interface**: Command-line interface for automation and scripting
-- **📊 Real-time Progress**: Dynamic progress tracking with live updates
-- **🔄 Agent Monitoring**: Live agent activity and status monitoring
-- **📝 Live Logging**: Real-time activity logs with timestamps
-- **⏱️ Time Estimation**: Accurate progress and time remaining estimates
-
-## Architecture
-
-### Agent Pipeline
-
-```mermaid
-graph TD
-    A[User Input] --> B[Requirements Agent]
-    B --> C[Coding Agent]
-    C --> D[Code Review Agent]
-    D --> E{Review Passed?}
-    E -->|No| C
-    E -->|Yes| F[Documentation Agent]
-    F --> G[Test Generation Agent]
-    G --> H[Deployment Agent]
-    H --> I[UI Agent]
-    I --> J[Complete Application]
-    
-    style A fill:#e1f5fe
-    style J fill:#c8e6c9
-    style E fill:#fff3e0
+```
+┌─────────────────┐    HTTP/WebSocket    ┌─────────────────┐
+│                 │ ◄─────────────────► │                 │
+│  Streamlit UI   │                     │  FastAPI Backend│
+│   (Frontend)    │                     │   (Business     │
+│                 │                     │     Logic)      │
+└─────────────────┘                     └─────────────────┘
+                                                │
+                                                ▼
+                                        ┌─────────────────┐
+                                        │   AutoGen       │
+                                        │   Agents        │
+                                        │                 │
+                                        └─────────────────┘
 ```
 
-### Specialized Agents
+### Backend (FastAPI)
+- **API Layer**: RESTful endpoints with automatic OpenAPI documentation
+- **Service Layer**: Business logic for pipeline, agents, progress, and projects
+- **Core Logic**: Multi-agent pipeline orchestration and agent management
+- **Real-time Updates**: WebSocket support for live progress tracking
 
-1. **Requirements Analyst**: Analyzes natural language input and creates structured requirements
-2. **Python Coder**: Generates high-quality Python code from requirements
-3. **Code Reviewer**: Reviews code for quality, security, and best practices
-4. **Documentation Writer**: Creates comprehensive documentation
-5. **Test Generator**: Generates comprehensive test suites
-6. **Deployment Engineer**: Creates deployment configurations and scripts
-7. **UI Designer**: Creates Streamlit user interfaces
+### Frontend (Streamlit)
+- **UI Only**: Clean separation with no business logic
+- **API Client**: HTTP client for backend communication
+- **Real-time UI**: Progress tracking and live updates
+- **User Experience**: Intuitive interface for code generation
 
-## Installation
+## 🚀 Quick Start
 
 ### Prerequisites
+- Python 3.8+
+- All dependencies from `requirements.txt`
 
-- Python 3.8 or higher
-- OpenAI API key
-
-### Setup
-
-1. **Clone the repository**:
-   ```bash
-   git clone <repository-url>
-   cd multi-agent-framework
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment variables**:
-   Create a `.env` file with your OpenAI configuration:
-   ```env
-   OPENAI_API_KEY=your_openai_api_key_here
-   OPENAI_MODEL=gpt-4o-mini
-   ```
-
-4. **Verify installation**:
-   ```bash
-   python main.py --help
-   ```
-
-## Usage
-
-### Web Interface (Recommended)
-
-Launch the Streamlit web interface for the best user experience:
-
+### Installation
 ```bash
-python main.py web
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-Then open your browser to `http://localhost:8501`
+### Running the Application
 
-### Command Line Interface
-
-#### Generate an application:
+#### Option 1: Using Startup Scripts (Recommended)
 ```bash
-python main.py generate "Create a web scraper that extracts product information from e-commerce websites"
+# Terminal 1: Start the backend
+python start_backend.py
+
+# Terminal 2: Start the frontend
+python start_frontend.py
 ```
 
-#### With custom project name:
+#### Option 2: Manual Startup
 ```bash
-python main.py generate "Build a REST API for task management" --project-name "task-api"
+# Terminal 1: Start FastAPI backend
+cd backend
+python main.py
+# Backend available at: http://localhost:8000
+# API docs available at: http://localhost:8000/docs
+
+# Terminal 2: Start Streamlit frontend
+cd frontend
+streamlit run streamlit_app.py
+# Frontend available at: http://localhost:8501
 ```
 
-#### View pipeline status:
+## 📁 Project Structure
+
+```
+Multi-Agent-Code/
+├── backend/                    # FastAPI Backend
+│   ├── main.py                # FastAPI app entry point
+│   ├── api/                   # API layer
+│   │   ├── routes/           # API route handlers
+│   │   │   ├── pipeline.py   # Pipeline endpoints
+│   │   │   ├── agents.py     # Agent endpoints
+│   │   │   ├── progress.py   # Progress tracking + WebSocket
+│   │   │   └── projects.py   # Project management
+│   │   └── dependencies.py   # Dependency injection
+│   ├── services/             # Business logic layer
+│   │   ├── pipeline_service.py
+│   │   ├── agent_service.py
+│   │   ├── progress_service.py
+│   │   └── project_service.py
+│   ├── models/               # Pydantic models
+│   │   ├── requests.py       # Request models
+│   │   ├── responses.py      # Response models
+│   │   └── schemas.py        # Data schemas
+│   ├── core/                 # Core business logic
+│   ├── agents/               # AutoGen agent definitions
+│   └── config/               # Configuration
+├── frontend/                  # Streamlit Frontend
+│   ├── streamlit_app.py      # Main UI application
+│   └── client/               # API client
+│       └── api_client.py     # HTTP client for backend
+├── start_backend.py          # Backend startup script
+├── start_frontend.py         # Frontend startup script
+├── requirements.txt          # Dependencies
+└── README.md                 # This file
+```
+
+## 🔧 API Endpoints
+
+### Pipeline Management
+- `POST /api/v1/pipeline/generate` - Start code generation
+- `POST /api/v1/pipeline/validate` - Validate user input
+- `GET /api/v1/pipeline/status` - Get pipeline status
+- `GET /api/v1/pipeline/status/{project_id}` - Get project status
+- `POST /api/v1/pipeline/cancel/{project_id}` - Cancel project
+- `GET /api/v1/pipeline/result/{project_id}` - Get project result
+
+### Agent Information
+- `GET /api/v1/agents/info` - Get all agent information
+- `GET /api/v1/agents/{agent_name}` - Get specific agent details
+- `GET /api/v1/agents/capabilities/{agent_name}` - Get agent capabilities
+
+### Progress Tracking
+- `GET /api/v1/progress/{project_id}` - Get project progress
+- `GET /api/v1/progress/{project_id}/logs` - Get project logs
+- `WebSocket /api/v1/progress/ws/{project_id}` - Real-time progress updates
+
+### Project Management
+- `GET /api/v1/projects/history` - Get project history
+- `GET /api/v1/projects/statistics` - Get project statistics
+- `GET /api/v1/projects/{project_id}` - Get project result
+- `GET /api/v1/projects/search` - Search projects
+
+## 🤖 Available Agents
+
+1. **Requirement Analyst** - Analyzes natural language input and creates structured requirements
+2. **Python Coder** - Generates high-quality Python code from requirements
+3. **Code Reviewer** - Reviews code for quality, security, and best practices
+4. **Documentation Writer** - Creates comprehensive documentation
+5. **Test Generator** - Generates comprehensive test suites
+6. **Deployment Engineer** - Creates deployment configurations and scripts
+7. **UI Designer** - Creates Streamlit user interfaces
+
+## 🔄 Pipeline Steps
+
+1. **Requirements Analysis** - Convert natural language to structured requirements
+2. **Code Generation** - Generate Python code from requirements
+3. **Code Review & Iteration** - Review and improve code quality
+4. **Documentation Generation** - Create comprehensive documentation
+5. **Test Case Generation** - Generate test suites
+6. **Deployment Configuration** - Create deployment configs
+7. **UI Generation** - Create Streamlit user interface
+
+## 🌟 Key Features
+
+### Backend Features
+- **Async/Await Support** - Full async support for better performance
+- **WebSocket Support** - Real-time progress updates
+- **Background Tasks** - Long-running pipeline execution
+- **Auto-generated OpenAPI** - Automatic API documentation
+- **CORS Support** - Enable frontend-backend communication
+- **Error Handling** - Comprehensive error handling and logging
+
+### Frontend Features
+- **Clean UI** - Separation of concerns with no business logic
+- **Real-time Updates** - Live progress tracking via API polling
+- **Error Boundaries** - Graceful error handling and recovery
+- **Download Support** - Download generated code and documentation
+- **Project History** - View and manage previous generations
+
+## 🔧 Development
+
+### Backend Development
 ```bash
-python main.py status
+cd backend
+python main.py
+# API docs available at http://localhost:8000/docs
 ```
 
-#### List available agents:
+### Frontend Development
 ```bash
-python main.py agents
+cd frontend
+streamlit run streamlit_app.py
 ```
 
-#### View generation history:
-```bash
-python main.py history
-```
+### Testing the API
+Visit `http://localhost:8000/docs` for interactive API documentation and testing.
 
-#### Launch web interface:
-```bash
-python main.py web --host 0.0.0.0 --port 8080
-```
+## 📊 Benefits of New Architecture
 
-### Python API
+1. **Separation of Concerns** - Clear distinction between UI and business logic
+2. **Scalability** - Backend can serve multiple frontends (web, mobile, CLI)
+3. **Testability** - Business logic can be tested independently
+4. **Maintainability** - Easier to maintain and extend each layer
+5. **Performance** - Async backend with efficient resource utilization
+6. **API Access** - External systems can integrate via REST API
+7. **Real-time Updates** - WebSocket support for live progress tracking
 
-```python
-from core.pipeline import pipeline
+## 🚀 Deployment
 
-# Generate application
-results = pipeline.run_pipeline(
-    user_input="Create a data analysis tool for CSV files",
-    project_name="csv-analyzer"
-)
+The refactored architecture supports various deployment options:
 
-# Access generated components
-code = results['code']['final_code']
-documentation = results['documentation']['readme']
-tests = results['tests']['test_code']
-```
+- **Development**: Run both services locally
+- **Production**: Deploy backend and frontend separately
+- **Docker**: Containerize each service independently
+- **Cloud**: Deploy to cloud platforms with auto-scaling
 
-## Configuration
-
-### Model Configuration
-
-Customize AI model settings in your `.env` file:
-
-```env
-OPENAI_API_KEY=your_api_key
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_MAX_TOKENS=4000
-OPENAI_TEMPERATURE=0.7
-OPENAI_BASE_URL=https://api.openai.com/v1  # Optional
-OPENAI_ORGANIZATION=your_org_id  # Optional
-```
-
-### Agent Configuration
-
-Agent behaviors are defined in individual agent classes in the `agents/` directory. Each agent has:
-- System message defining its role and responsibilities
-- Specialized model configurations
-- Interaction parameters
-
-## Output Structure
-
-Generated projects are saved in the `output/` directory with the following structure:
-
-```
-output/
-└── project_name_timestamp/
-    ├── project_results.json      # Complete results
-    ├── main.py                   # Generated application code
-    ├── README.md                 # Documentation
-    ├── test_main.py             # Test cases
-    ├── streamlit_app.py         # UI application
-    └── deployment.md            # Deployment configurations
-```
-
-## Examples
-
-### Data Analysis Tool
-```bash
-python main.py generate "Create a data analysis tool that reads CSV files, performs statistical analysis, generates visualizations, and exports reports in PDF format"
-```
-
-### Web API
-```bash
-python main.py generate "Build a REST API for a task management system with user authentication, CRUD operations for tasks, and email notifications"
-```
-
-### Chatbot
-```bash
-python main.py generate "Create an intelligent chatbot that can answer questions about a knowledge base, with conversation history and context awareness"
-```
-
-## Key Features
-
-### Iterative Code Review
-- Automatic code review and improvement cycles
-- Security vulnerability detection
-- Performance optimization suggestions
-- Best practices enforcement
-
-### Comprehensive Testing
-- Unit tests with pytest
-- Integration tests
-- Edge case coverage
-- Mock object generation
-- >90% code coverage target
-
-### Production-Ready Deployment
-- Docker containerization
-- CI/CD pipeline configurations
-- Environment-specific settings
-- Health checks and monitoring
-
-### Interactive UI Generation
-- Streamlit web interfaces
-- Real-time data visualization
-- User-friendly forms and controls
-- Responsive design
-
-### Dynamic Progress Tracking
-- **Real-time Updates**: Live progress bars and status indicators
-- **Step-by-Step Tracking**: Detailed breakdown of each pipeline stage
-- **Agent Activity Monitoring**: Visual display of which agents are active
-- **Live Logging**: Timestamped activity logs with color-coded levels
-- **Time Estimation**: Accurate progress percentage and ETA calculations
-- **Substep Details**: Granular progress within each major step
-- **Error Handling**: Clear indication of failures with recovery status
-- **Visual Indicators**: Color-coded status badges and progress animations
-
-#### Progress Demo
-Try the interactive progress demo:
-```bash
-python demo_progress.py
-```
-
-This showcases:
-- Multi-step pipeline simulation
-- Real-time progress callbacks
-- Agent activity monitoring
-- Error handling scenarios
-- Live logging with timestamps
-
-## Troubleshooting
-
-### Common Issues
-
-1. **OpenAI API Key Error**:
-   - Ensure your `.env` file contains a valid `OPENAI_API_KEY`
-   - Check that your API key has sufficient credits
-
-2. **Import Errors**:
-   - Verify all dependencies are installed: `pip install -r requirements.txt`
-   - Check Python version compatibility (3.8+)
-
-3. **Generation Failures**:
-   - Use `python main.py status` to check pipeline status
-   - Enable verbose mode: `python main.py generate "description" --verbose`
-
-4. **Web Interface Issues**:
-   - Ensure port 8501 is available
-   - Try a different port: `python main.py web --port 8080`
-
-### Logging
-
-Logs are written to `multi_agent_framework.log` for debugging purposes.
-
-## Development
-
-### Project Structure
-
-```
-multi-agent-framework/
-├── agents/                # Individual agent implementations
-│   ├── __init__.py       # Agent package initialization
-│   ├── requirement_analyst.py    # Requirements analysis agent
-│   ├── python_coder.py           # Code generation agent
-│   ├── code_reviewer.py          # Code review agent
-│   ├── documentation_writer.py   # Documentation agent
-│   ├── test_generator.py         # Test generation agent
-│   ├── deployment_engineer.py    # Deployment configuration agent
-│   └── ui_designer.py            # UI generation agent
-├── config/                # Configuration files
-│   ├── agent_config.py    # Legacy agent configurations
-│   └── model_config.py    # LLM model configurations
-├── core/                  # Core framework components
-│   ├── agent_manager.py   # Agent coordination and management
-│   ├── pipeline.py        # Main pipeline orchestrator
-│   └── utils.py          # Utility functions
-├── output/               # Generated project outputs
-├── .env                 # Environment variables
-├── requirements.txt     # Python dependencies
-├── main.py             # CLI interface
-├── streamlit_app.py    # Web interface
-└── README.md           # This file
-```
-
-### Adding New Agents
-
-1. Create a new agent class in the `agents/` directory following the existing pattern
-2. Add the agent import and export in `agents/__init__.py`
-3. Update the agent initialization in `core/agent_manager.py`
-4. Implement agent workflow in the pipeline
-5. Update documentation and tests
-
-### Customizing Workflows
-
-The pipeline can be customized by modifying the `process_user_input` method in `AgentManager`. You can:
-- Add new pipeline steps
-- Modify agent interactions
-- Implement custom validation logic
-- Add new output formats
-
-## Contributing
+## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests for new functionality
+4. Test both backend and frontend
 5. Submit a pull request
 
-## License
+## 📝 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License.
 
-## Support
+## 🆘 Troubleshooting
 
-For support and questions:
-- Check the troubleshooting section above
-- Review the logs in `multi_agent_framework.log`
-- Open an issue on GitHub
+### Backend Issues
+- Ensure all dependencies are installed: `pip install -r requirements.txt`
+- Check if port 8000 is available
+- Verify agent configurations in `backend/config/`
 
-## Roadmap
+### Frontend Issues
+- Ensure backend is running at `http://localhost:8000`
+- Check if port 8501 is available
+- Verify API client configuration
 
-- [ ] Support for additional programming languages
-- [ ] Integration with more LLM providers
-- [ ] Advanced deployment options (Kubernetes, AWS, etc.)
-- [ ] Plugin system for custom agents
-- [ ] Real-time collaboration features
-- [ ] Integration with version control systems
-- [ ] Advanced code analysis and metrics
+### Common Issues
+- **Connection Refused**: Make sure backend is running before starting frontend
+- **Import Errors**: Ensure you're running from the correct directory
+- **Agent Errors**: Check your OpenAI API key and model configurations
 
----
-
-**Transform your ideas into reality with AI-powered development!** 🚀
+For more help, check the API documentation at `http://localhost:8000/docs` when the backend is running.
