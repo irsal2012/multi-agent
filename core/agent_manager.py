@@ -9,7 +9,10 @@ from datetime import datetime
 
 import autogen
 from config.model_config import model_config
-from config.agent_config import agent_config
+from agents import (
+    RequirementAnalyst, PythonCoder, CodeReviewer, DocumentationWriter,
+    TestGenerator, DeploymentEngineer, UIDesigner
+)
 from core.utils import (
     setup_logging, save_json, save_text, generate_timestamp,
     validate_requirements, extract_code_blocks, ProgressTracker
@@ -51,45 +54,38 @@ class AgentManager:
         """Initialize all AutoGen agents."""
         try:
             # Requirement Analysis Agent
-            self.agents['requirement_analyst'] = autogen.AssistantAgent(
-                llm_config=model_config.get_llm_config(),
-                **agent_config.get_requirement_agent_config()
+            self.agents['requirement_analyst'] = RequirementAnalyst.create_agent(
+                model_config.get_llm_config()
             )
             
             # Coding Agent
-            self.agents['python_coder'] = autogen.AssistantAgent(
-                llm_config=model_config.get_coding_config(),
-                **agent_config.get_coding_agent_config()
+            self.agents['python_coder'] = PythonCoder.create_agent(
+                model_config.get_coding_config()
             )
             
             # Code Review Agent
-            self.agents['code_reviewer'] = autogen.AssistantAgent(
-                llm_config=model_config.get_review_config(),
-                **agent_config.get_review_agent_config()
+            self.agents['code_reviewer'] = CodeReviewer.create_agent(
+                model_config.get_review_config()
             )
             
             # Documentation Agent
-            self.agents['documentation_writer'] = autogen.AssistantAgent(
-                llm_config=model_config.get_creative_config(),
-                **agent_config.get_documentation_agent_config()
+            self.agents['documentation_writer'] = DocumentationWriter.create_agent(
+                model_config.get_creative_config()
             )
             
             # Test Generation Agent
-            self.agents['test_generator'] = autogen.AssistantAgent(
-                llm_config=model_config.get_coding_config(),
-                **agent_config.get_test_agent_config()
+            self.agents['test_generator'] = TestGenerator.create_agent(
+                model_config.get_coding_config()
             )
             
             # Deployment Agent
-            self.agents['deployment_engineer'] = autogen.AssistantAgent(
-                llm_config=model_config.get_llm_config(),
-                **agent_config.get_deployment_agent_config()
+            self.agents['deployment_engineer'] = DeploymentEngineer.create_agent(
+                model_config.get_llm_config()
             )
             
             # UI Agent
-            self.agents['ui_designer'] = autogen.AssistantAgent(
-                llm_config=model_config.get_creative_config(),
-                **agent_config.get_ui_agent_config()
+            self.agents['ui_designer'] = UIDesigner.create_agent(
+                model_config.get_creative_config()
             )
             
             # User Proxy Agent for coordination

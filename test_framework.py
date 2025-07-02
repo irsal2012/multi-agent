@@ -14,7 +14,10 @@ def test_imports():
     try:
         # Test core imports
         from config.model_config import model_config
-        from config.agent_config import agent_config
+        from agents import (
+            RequirementAnalyst, PythonCoder, CodeReviewer, DocumentationWriter,
+            TestGenerator, DeploymentEngineer, UIDesigner
+        )
         from core.utils import setup_logging, ProgressTracker
         from core.agent_manager import AgentManager
         from core.pipeline import pipeline
@@ -163,7 +166,7 @@ def test_configuration():
     
     try:
         from config.model_config import model_config
-        from config.agent_config import agent_config
+        from agents import RequirementAnalyst
         
         # Test model config
         llm_config = model_config.get_llm_config()
@@ -172,7 +175,7 @@ def test_configuration():
             return False
         
         # Test agent configs
-        req_config = agent_config.get_requirement_agent_config()
+        req_config = RequirementAnalyst.get_config()
         if 'name' not in req_config or 'system_message' not in req_config:
             print("❌ Agent config format incorrect")
             return False

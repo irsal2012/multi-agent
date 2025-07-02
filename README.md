@@ -164,7 +164,7 @@ OPENAI_ORGANIZATION=your_org_id  # Optional
 
 ### Agent Configuration
 
-Agent behaviors can be customized in `config/agent_config.py`. Each agent has:
+Agent behaviors are defined in individual agent classes in the `agents/` directory. Each agent has:
 - System message defining its role and responsibilities
 - Specialized model configurations
 - Interaction parameters
@@ -281,8 +281,17 @@ Logs are written to `multi_agent_framework.log` for debugging purposes.
 
 ```
 multi-agent-framework/
-├── config/                 # Configuration files
-│   ├── agent_config.py    # Agent system messages and behaviors
+├── agents/                # Individual agent implementations
+│   ├── __init__.py       # Agent package initialization
+│   ├── requirement_analyst.py    # Requirements analysis agent
+│   ├── python_coder.py           # Code generation agent
+│   ├── code_reviewer.py          # Code review agent
+│   ├── documentation_writer.py   # Documentation agent
+│   ├── test_generator.py         # Test generation agent
+│   ├── deployment_engineer.py    # Deployment configuration agent
+│   └── ui_designer.py            # UI generation agent
+├── config/                # Configuration files
+│   ├── agent_config.py    # Legacy agent configurations
 │   └── model_config.py    # LLM model configurations
 ├── core/                  # Core framework components
 │   ├── agent_manager.py   # Agent coordination and management
@@ -298,10 +307,11 @@ multi-agent-framework/
 
 ### Adding New Agents
 
-1. Define agent configuration in `config/agent_config.py`
-2. Add agent initialization in `core/agent_manager.py`
-3. Implement agent workflow in the pipeline
-4. Update documentation and tests
+1. Create a new agent class in the `agents/` directory following the existing pattern
+2. Add the agent import and export in `agents/__init__.py`
+3. Update the agent initialization in `core/agent_manager.py`
+4. Implement agent workflow in the pipeline
+5. Update documentation and tests
 
 ### Customizing Workflows
 
