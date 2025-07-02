@@ -33,19 +33,19 @@ class AgentManager:
         self._initialize_agents()
     
     def _setup_progress_steps(self):
-        """Set up progress tracking steps."""
+        """Set up progress tracking steps with estimated durations."""
         steps = [
-            ("requirements_analysis", "Analyzing requirements from user input"),
-            ("code_generation", "Generating Python code from requirements"),
-            ("code_review", "Reviewing code for quality and security"),
-            ("documentation", "Creating comprehensive documentation"),
-            ("test_generation", "Generating test cases"),
-            ("deployment_config", "Creating deployment configurations"),
-            ("ui_generation", "Creating Streamlit user interface")
+            ("requirements_analysis", "Analyzing requirements from user input", 25.0),
+            ("code_generation", "Generating Python code from requirements", 45.0),
+            ("code_review", "Reviewing code for quality and security", 30.0),
+            ("documentation", "Creating comprehensive documentation", 20.0),
+            ("test_generation", "Generating test cases", 25.0),
+            ("deployment_config", "Creating deployment configurations", 15.0),
+            ("ui_generation", "Creating Streamlit user interface", 20.0)
         ]
         
-        for step_name, description in steps:
-            self.progress_tracker.add_step(step_name, description)
+        for step_name, description, estimated_duration in steps:
+            self.progress_tracker.add_step(step_name, description, estimated_duration)
     
     def _initialize_agents(self):
         """Initialize all AutoGen agents."""
@@ -161,11 +161,21 @@ class AgentManager:
     
     def _analyze_requirements(self, user_input: str) -> Dict[str, Any]:
         """Step 1: Analyze requirements from user input."""
-        self.progress_tracker.start_step(0)
-        self.logger.info("Starting requirements analysis")
+        self.progress_tracker.start_step(0, "requirement_analyst")
+        self.progress_tracker.add_log("Starting requirements analysis", "info", "requirement_analyst")
         
         try:
+            # Add substeps for detailed tracking
+            self.progress_tracker.add_substep(0, "parsing_input", "Parsing user input")
+            self.progress_tracker.update_substep(0, "parsing_input", "running")
+            self.progress_tracker.update_step_progress(0, 10, "Parsing user input")
+            
             # Create a conversation for requirements analysis
+            self.progress_tracker.update_substep(0, "parsing_input", "completed")
+            self.progress_tracker.add_substep(0, "analyzing_requirements", "Analyzing requirements")
+            self.progress_tracker.update_substep(0, "analyzing_requirements", "running")
+            self.progress_tracker.update_step_progress(0, 30, "Analyzing requirements with AI agent")
+            
             chat_result = self.agents['user_proxy'].initiate_chat(
                 self.agents['requirement_analyst'],
                 message=f"""Please analyze the following user request and convert it into structured software requirements:
@@ -189,6 +199,11 @@ Format your response as a JSON structure with the following keys:
                 max_turns=3
             )
             
+            self.progress_tracker.update_step_progress(0, 70, "Processing agent response")
+            self.progress_tracker.update_substep(0, "analyzing_requirements", "completed")
+            self.progress_tracker.add_substep(0, "structuring_output", "Structuring output")
+            self.progress_tracker.update_substep(0, "structuring_output", "running")
+            
             # Extract requirements from the conversation
             requirements_text = chat_result.chat_history[-1]['content']
             
@@ -205,23 +220,33 @@ Format your response as a JSON structure with the following keys:
             except json.JSONDecodeError:
                 requirements = self._parse_requirements_from_text(requirements_text)
             
-            self.progress_tracker.complete_step(0, True)
-            self.logger.info("Requirements analysis completed")
+            self.progress_tracker.update_step_progress(0, 100, "Requirements analysis completed")
+            self.progress_tracker.update_substep(0, "structuring_output", "completed")
+            self.progress_tracker.complete_step(0, True, "Requirements successfully analyzed and structured")
             
             return requirements
             
         except Exception as e:
-            self.progress_tracker.complete_step(0, False)
-            self.logger.error(f"Requirements analysis failed: {str(e)}")
+            self.progress_tracker.complete_step(0, False, f"Requirements analysis failed: {str(e)}")
             raise
     
     def _generate_code(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
         """Step 2: Generate code from requirements."""
-        self.progress_tracker.start_step(1)
-        self.logger.info("Starting code generation")
+        self.progress_tracker.start_step(1, "python_coder")
+        self.progress_tracker.add_log("Starting code generation", "info", "python_coder")
         
         try:
+            # Add substeps for detailed tracking
+            self.progress_tracker.add_substep(1, "preparing_requirements", "Preparing requirements for code generation")
+            self.progress_tracker.update_substep(1, "preparing_requirements", "running")
+            self.progress_tracker.update_step_progress(1, 10, "Preparing requirements")
+            
             requirements_text = json.dumps(requirements, indent=2)
+            
+            self.progress_tracker.update_substep(1, "preparing_requirements", "completed")
+            self.progress_tracker.add_substep(1, "generating_code", "Generating Python code with AI agent")
+            self.progress_tracker.update_substep(1, "generating_code", "running")
+            self.progress_tracker.update_step_progress(1, 25, "Generating code with AI agent")
             
             chat_result = self.agents['user_proxy'].initiate_chat(
                 self.agents['python_coder'],
@@ -242,6 +267,11 @@ Structure your response with clear code blocks and explanations.""",
                 max_turns=2
             )
             
+            self.progress_tracker.update_step_progress(1, 70, "Processing generated code")
+            self.progress_tracker.update_substep(1, "generating_code", "completed")
+            self.progress_tracker.add_substep(1, "extracting_code", "Extracting code blocks")
+            self.progress_tracker.update_substep(1, "extracting_code", "running")
+            
             code_response = chat_result.chat_history[-1]['content']
             code_blocks = extract_code_blocks(code_response)
             
@@ -252,14 +282,14 @@ Structure your response with clear code blocks and explanations.""",
                 'timestamp': datetime.now().isoformat()
             }
             
-            self.progress_tracker.complete_step(1, True)
-            self.logger.info("Code generation completed")
+            self.progress_tracker.update_step_progress(1, 100, "Code generation completed")
+            self.progress_tracker.update_substep(1, "extracting_code", "completed")
+            self.progress_tracker.complete_step(1, True, "Python code successfully generated")
             
             return code_result
             
         except Exception as e:
-            self.progress_tracker.complete_step(1, False)
-            self.logger.error(f"Code generation failed: {str(e)}")
+            self.progress_tracker.complete_step(1, False, f"Code generation failed: {str(e)}")
             raise
     
     def _review_code(self, code_result: Dict[str, Any], requirements: Dict[str, Any]) -> Dict[str, Any]:

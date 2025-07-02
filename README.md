@@ -17,6 +17,10 @@ This framework uses multiple specialized AI agents to collaboratively develop co
 - **🎨 UI Generation**: Streamlit web interface creation
 - **🌐 Web Interface**: Beautiful Streamlit dashboard for easy interaction
 - **💻 CLI Interface**: Command-line interface for automation and scripting
+- **📊 Real-time Progress**: Dynamic progress tracking with live updates
+- **🔄 Agent Monitoring**: Live agent activity and status monitoring
+- **📝 Live Logging**: Real-time activity logs with timestamps
+- **⏱️ Time Estimation**: Accurate progress and time remaining estimates
 
 ## Architecture
 
@@ -223,6 +227,29 @@ python main.py generate "Create an intelligent chatbot that can answer questions
 - Real-time data visualization
 - User-friendly forms and controls
 - Responsive design
+
+### Dynamic Progress Tracking
+- **Real-time Updates**: Live progress bars and status indicators
+- **Step-by-Step Tracking**: Detailed breakdown of each pipeline stage
+- **Agent Activity Monitoring**: Visual display of which agents are active
+- **Live Logging**: Timestamped activity logs with color-coded levels
+- **Time Estimation**: Accurate progress percentage and ETA calculations
+- **Substep Details**: Granular progress within each major step
+- **Error Handling**: Clear indication of failures with recovery status
+- **Visual Indicators**: Color-coded status badges and progress animations
+
+#### Progress Demo
+Try the interactive progress demo:
+```bash
+python demo_progress.py
+```
+
+This showcases:
+- Multi-step pipeline simulation
+- Real-time progress callbacks
+- Agent activity monitoring
+- Error handling scenarios
+- Live logging with timestamps
 
 ## Troubleshooting
 

@@ -144,49 +144,240 @@ def show_code_generator():
         st.error("Please provide a description of what you want to build.")
 
 def generate_application(user_input: str, project_name: str = None):
-    """Generate application using the multi-agent pipeline."""
+    """Generate application using the multi-agent pipeline with real-time progress."""
     
-    # Initialize progress tracking
-    progress_container = st.container()
-    status_container = st.container()
+    # Initialize session state for progress tracking
+    if 'generation_active' not in st.session_state:
+        st.session_state.generation_active = False
     
-    with progress_container:
-        st.subheader("🔄 Generation in Progress")
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        step_details = st.empty()
+    if st.session_state.generation_active:
+        st.warning("⚠️ Generation already in progress. Please wait for completion.")
+        return
+    
+    # Set generation as active
+    st.session_state.generation_active = True
     
     try:
-        # Start pipeline in a separate thread-like manner
-        with st.spinner("Initializing agents..."):
-            start_time = time.time()
+        # Create comprehensive progress interface
+        progress_container = st.container()
+        
+        with progress_container:
+            st.subheader("🚀 Generation in Progress")
             
-            # Create placeholder for real-time updates
-            if 'pipeline_running' not in st.session_state:
-                st.session_state.pipeline_running = True
+            # Main progress bar
+            main_progress = st.progress(0)
+            
+            # Status and timing info
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                status_text = st.empty()
+            with col2:
+                elapsed_time = st.empty()
+            with col3:
+                eta_text = st.empty()
+            
+            # Current step details
+            current_step_container = st.container()
+            with current_step_container:
+                step_header = st.empty()
+                step_progress = st.empty()
+                step_details = st.empty()
+            
+            # Agent activity monitor
+            agent_container = st.container()
+            with agent_container:
+                st.markdown("### 🤖 Agent Activity")
+                agent_status = st.empty()
+            
+            # Live logs
+            logs_container = st.container()
+            with logs_container:
+                st.markdown("### 📝 Live Activity Log")
+                logs_display = st.empty()
+            
+            # Detailed step breakdown
+            steps_container = st.container()
+            with steps_container:
+                st.markdown("### 📋 Pipeline Steps")
+                steps_display = st.empty()
+        
+        # Run pipeline with real-time updates
+        start_time = time.time()
+        
+        # Create a custom progress callback for real-time updates
+        def update_progress_display():
+            try:
+                progress_data = pipeline.get_pipeline_status()['current_progress']
                 
-                # Run the pipeline
-                results = pipeline.run_pipeline(user_input, project_name)
+                # Update main progress bar
+                main_progress.progress(progress_data['progress_percentage'] / 100)
                 
-                # Update progress to 100%
-                progress_bar.progress(1.0)
-                status_text.success("✅ Generation completed successfully!")
+                # Update status text
+                if progress_data['is_running']:
+                    current_step = progress_data.get('current_step_info')
+                    if current_step:
+                        status_icon = get_status_icon(current_step['status'])
+                        status_text.markdown(f"**{status_icon} {current_step['description']}**")
+                elif progress_data['is_completed']:
+                    status_text.success("✅ **Generation Completed!**")
+                elif progress_data['has_failures']:
+                    status_text.error("❌ **Generation Failed**")
                 
-                # Display results
-                display_results(results)
+                # Update timing info
+                elapsed = progress_data['elapsed_time']
+                elapsed_time.metric("Elapsed", f"{elapsed:.1f}s")
                 
-                st.session_state.pipeline_running = False
+                if progress_data['estimated_remaining_time'] > 0:
+                    eta_text.metric("ETA", f"{progress_data['estimated_remaining_time']:.1f}s")
+                else:
+                    eta_text.metric("ETA", "Calculating...")
                 
+                # Update current step details
+                current_step = progress_data.get('current_step_info')
+                if current_step:
+                    step_icon = get_status_icon(current_step['status'])
+                    step_header.markdown(f"#### {step_icon} {current_step['name'].replace('_', ' ').title()}")
+                    
+                    if current_step['status'] == 'running':
+                        step_progress.progress(current_step['progress_percentage'] / 100)
+                        step_details.info(f"🔄 {current_step['description']}")
+                    elif current_step['status'] == 'completed':
+                        step_progress.progress(1.0)
+                        duration = current_step.get('duration', 0)
+                        step_details.success(f"✅ Completed in {duration:.1f}s")
+                    elif current_step['status'] == 'failed':
+                        step_progress.progress(0.0)
+                        step_details.error(f"❌ Failed")
+                
+                # Update agent activities
+                agent_activities = progress_data.get('agent_activities', {})
+                if agent_activities:
+                    agent_status_html = "<div style='display: flex; flex-wrap: wrap; gap: 10px;'>"
+                    for agent_name, activity in agent_activities.items():
+                        status_color = {
+                            'active': '#28a745',
+                            'completed': '#17a2b8',
+                            'failed': '#dc3545'
+                        }.get(activity['status'], '#6c757d')
+                        
+                        agent_status_html += f"""
+                        <div style='background: {status_color}; color: white; padding: 8px 12px; 
+                                   border-radius: 20px; font-size: 12px; font-weight: bold;'>
+                            🤖 {agent_name.replace('_', ' ').title()}: {activity['status'].title()}
+                        </div>
+                        """
+                    agent_status_html += "</div>"
+                    agent_status.markdown(agent_status_html, unsafe_allow_html=True)
+                
+                # Update live logs
+                recent_logs = progress_data.get('logs', [])
+                if recent_logs:
+                    logs_html = "<div style='background: #f8f9fa; padding: 10px; border-radius: 5px; max-height: 200px; overflow-y: auto;'>"
+                    for log in recent_logs[-10:]:  # Show last 10 logs
+                        timestamp = log['timestamp'][:19].replace('T', ' ')
+                        level_color = {
+                            'info': '#17a2b8',
+                            'success': '#28a745',
+                            'warning': '#ffc107',
+                            'error': '#dc3545'
+                        }.get(log['level'], '#6c757d')
+                        
+                        agent_name = log.get('agent_name', 'System')
+                        logs_html += f"""
+                        <div style='margin-bottom: 5px; font-size: 12px;'>
+                            <span style='color: #6c757d;'>[{timestamp}]</span>
+                            <span style='color: {level_color}; font-weight: bold;'>{agent_name}:</span>
+                            <span>{log['message']}</span>
+                        </div>
+                        """
+                    logs_html += "</div>"
+                    logs_display.markdown(logs_html, unsafe_allow_html=True)
+                
+                # Update detailed steps
+                steps = progress_data.get('steps', [])
+                if steps:
+                    steps_html = "<div style='display: flex; flex-direction: column; gap: 10px;'>"
+                    for i, step in enumerate(steps):
+                        status_icon = get_status_icon(step['status'])
+                        progress_width = step.get('progress_percentage', 0)
+                        
+                        # Step container
+                        border_color = {
+                            'pending': '#e9ecef',
+                            'running': '#007bff',
+                            'completed': '#28a745',
+                            'failed': '#dc3545'
+                        }.get(step['status'], '#e9ecef')
+                        
+                        steps_html += f"""
+                        <div style='border: 2px solid {border_color}; border-radius: 8px; padding: 12px;'>
+                            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;'>
+                                <span style='font-weight: bold;'>{status_icon} {step['name'].replace('_', ' ').title()}</span>
+                                <span style='font-size: 12px; color: #6c757d;'>
+                                    {step.get('duration', 0):.1f}s
+                                </span>
+                            </div>
+                            <div style='font-size: 14px; color: #6c757d; margin-bottom: 8px;'>
+                                {step['description']}
+                            </div>
+                            <div style='background: #e9ecef; border-radius: 10px; height: 6px; overflow: hidden;'>
+                                <div style='background: {border_color}; height: 100%; width: {progress_width}%; transition: width 0.3s ease;'></div>
+                            </div>
+                        </div>
+                        """
+                    steps_html += "</div>"
+                    steps_display.markdown(steps_html, unsafe_allow_html=True)
+                
+            except Exception as e:
+                # Don't let display errors break the generation
+                pass
+        
+        # Run the pipeline with periodic updates
+        placeholder = st.empty()
+        
+        # Start the pipeline in a way that allows for updates
+        with st.spinner("Initializing multi-agent pipeline..."):
+            # Initialize progress display
+            update_progress_display()
+            
+            # Run pipeline
+            results = pipeline.run_pipeline(user_input, project_name)
+            
+            # Final update
+            time.sleep(0.5)  # Brief pause to show completion
+            update_progress_display()
+            
+            # Success message
+            st.success("🎉 **Application generated successfully!**")
+            
+            # Display results
+            display_results(results)
+    
     except Exception as e:
-        st.error(f"❌ Generation failed: {str(e)}")
+        st.error(f"❌ **Generation failed:** {str(e)}")
         logger.error(f"Pipeline failed: {str(e)}")
         
-        # Show partial progress if available
+        # Show final progress state
         try:
-            progress = pipeline.get_pipeline_status()['current_progress']
-            st.json(progress)
+            progress_data = pipeline.get_pipeline_status()['current_progress']
+            st.json(progress_data)
         except:
             pass
+    
+    finally:
+        # Reset generation state
+        st.session_state.generation_active = False
+
+
+def get_status_icon(status: str) -> str:
+    """Get appropriate icon for status."""
+    icons = {
+        'pending': '⏳',
+        'running': '🔄',
+        'completed': '✅',
+        'failed': '❌'
+    }
+    return icons.get(status, '❓')
 
 def display_results(results: Dict[str, Any]):
     """Display the generated application results."""
