@@ -77,14 +77,17 @@ def show_code_generator():
     with col1:
         if st.button("📊 Data Analysis Tool", use_container_width=True):
             st.session_state.example_input = "Create a data analysis tool that reads CSV files, performs statistical analysis, generates visualizations, and exports reports in PDF format."
+            st.rerun()
     
     with col2:
         if st.button("🌐 Web API", use_container_width=True):
             st.session_state.example_input = "Build a REST API for a task management system with user authentication, CRUD operations for tasks, and email notifications."
+            st.rerun()
     
     with col3:
         if st.button("🤖 Chatbot", use_container_width=True):
             st.session_state.example_input = "Create an intelligent chatbot that can answer questions about a knowledge base, with conversation history and context awareness."
+            st.rerun()
     
     # Input form
     with st.form("code_generation_form"):
@@ -93,11 +96,8 @@ def show_code_generator():
         col1, col2 = st.columns([3, 1])
         
         with col1:
-            # Use example if selected
-            default_input = ""
-            if 'example_input' in st.session_state:
-                default_input = st.session_state.example_input
-                del st.session_state.example_input
+            # Use example if selected, otherwise use empty string
+            default_input = st.session_state.get('example_input', '')
             
             user_input = st.text_area(
                 "What would you like to build?",
@@ -136,6 +136,9 @@ def show_code_generator():
     
     # Process submission
     if submitted and user_input:
+        # Clear the example input after successful submission
+        if 'example_input' in st.session_state:
+            del st.session_state.example_input
         generate_application(user_input, project_name)
     elif submitted:
         st.error("Please provide a description of what you want to build.")
