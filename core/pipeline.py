@@ -92,8 +92,26 @@ class MultiAgentPipeline:
     
     def get_pipeline_status(self) -> Dict[str, Any]:
         """Get current pipeline status and progress."""
+        try:
+            current_progress = self.agent_manager.get_progress()
+        except Exception as e:
+            # Fallback if agent manager progress is not available
+            current_progress = {
+                'total_steps': 0,
+                'completed_steps': 0,
+                'failed_steps': 0,
+                'progress_percentage': 0,
+                'steps': [],
+                'elapsed_time': 0,
+                'estimated_remaining_time': 0,
+                'is_running': False,
+                'is_completed': False,
+                'has_failures': False,
+                'logs': []
+            }
+        
         return {
-            'current_progress': self.agent_manager.get_progress(),
+            'current_progress': current_progress,
             'pipeline_history': self.pipeline_history,
             'total_runs': len(self.pipeline_history),
             'successful_runs': sum(1 for run in self.pipeline_history if run['success']),

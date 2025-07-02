@@ -45,7 +45,7 @@ def main():
         st.header("Navigation")
         page = st.selectbox(
             "Choose a page:",
-            ["Code Generator", "Pipeline Status", "Agent Information", "Project History"]
+            ["Code Generator", "Agent Information", "Project History"]
         )
         
         st.markdown("---")
@@ -58,8 +58,6 @@ def main():
     # Route to different pages
     if page == "Code Generator":
         show_code_generator()
-    elif page == "Pipeline Status":
-        show_pipeline_status()
     elif page == "Agent Information":
         show_agent_info()
     elif page == "Project History":
@@ -69,6 +67,51 @@ def show_code_generator():
     """Main code generation interface."""
     
     st.header("🚀 Generate Your Application")
+    
+    # Pipeline Status Section
+    with st.expander("📊 Pipeline Status", expanded=False):
+        try:
+            status = pipeline.get_pipeline_status()
+            
+            # Current progress
+            st.subheader("Current Progress")
+            progress = status['current_progress']
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Steps", progress['total_steps'])
+            
+            with col2:
+                st.metric("Completed", progress['completed_steps'])
+            
+            with col3:
+                st.metric("Failed", progress['failed_steps'])
+            
+            with col4:
+                st.metric("Progress", f"{progress['progress_percentage']:.1f}%")
+            
+            # Progress bar
+            if progress['total_steps'] > 0:
+                st.progress(progress['progress_percentage'] / 100)
+            
+            # Removed duplicate step details - now only shown in main pipeline steps section
+            
+            # Statistics
+            st.subheader("Pipeline Statistics")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Runs", status['total_runs'])
+            
+            with col2:
+                st.metric("Successful", status['successful_runs'])
+            
+            with col3:
+                st.metric("Failed", status['failed_runs'])
+            
+        except Exception as e:
+            st.error(f"Failed to load pipeline status: {str(e)}")
     
     # Quick Examples (outside form)
     st.subheader("Quick Examples")
@@ -144,7 +187,7 @@ def show_code_generator():
         st.error("Please provide a description of what you want to build.")
 
 def generate_application(user_input: str, project_name: str = None):
-    """Generate application using the multi-agent pipeline with real-time progress."""
+    """Generate application using the multi-agent pipeline."""
     
     # Initialize session state for progress tracking
     if 'generation_active' not in st.session_state:
@@ -158,211 +201,85 @@ def generate_application(user_input: str, project_name: str = None):
     st.session_state.generation_active = True
     
     try:
-        # Create comprehensive progress interface
-        progress_container = st.container()
+        # Create progress interface
+        st.subheader("🚀 Generation in Progress")
         
-        with progress_container:
-            st.subheader("🚀 Generation in Progress")
-            
-            # Main progress bar
-            main_progress = st.progress(0)
-            
-            # Status and timing info
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                status_text = st.empty()
-            with col2:
-                elapsed_time = st.empty()
-            with col3:
-                eta_text = st.empty()
-            
-            # Current step details
-            current_step_container = st.container()
-            with current_step_container:
-                step_header = st.empty()
-                step_progress = st.empty()
-                step_details = st.empty()
-            
-            # Agent activity monitor
-            agent_container = st.container()
-            with agent_container:
-                st.markdown("### 🤖 Agent Activity")
-                agent_status = st.empty()
-            
-            # Live logs
-            logs_container = st.container()
-            with logs_container:
-                st.markdown("### 📝 Live Activity Log")
-                logs_display = st.empty()
-            
-            # Detailed step breakdown
-            steps_container = st.container()
-            with steps_container:
-                st.markdown("### 📋 Pipeline Steps")
-                steps_display = st.empty()
+        # Show initial progress
+        progress_bar = st.progress(0)
+        status_text = st.empty()
         
-        # Run pipeline with real-time updates
-        start_time = time.time()
+        # Show pipeline steps
+        st.markdown("### 📋 Pipeline Steps")
+        step_placeholders = []
+        for i, step_name in enumerate([
+            "Requirements Analysis",
+            "Code Generation", 
+            "Code Review",
+            "Documentation",
+            "Test Generation",
+            "Deployment Config",
+            "UI Generation"
+        ]):
+            placeholder = st.empty()
+            placeholder.info(f"⏳ **{i+1}. {step_name}** - Waiting")
+            step_placeholders.append(placeholder)
         
-        # Create a custom progress callback for real-time updates
-        def update_progress_display():
+        # Run the pipeline with progress updates
+        with st.spinner("Running multi-agent pipeline..."):
             try:
-                progress_data = pipeline.get_pipeline_status()['current_progress']
+                # Update initial status
+                status_text.info("🚀 **Starting pipeline execution...**")
+                progress_bar.progress(0.05)
                 
-                # Update main progress bar
-                main_progress.progress(progress_data['progress_percentage'] / 100)
+                # Run the pipeline
+                results = pipeline.run_pipeline(user_input, project_name)
                 
-                # Update status text
-                if progress_data['is_running']:
-                    current_step = progress_data.get('current_step_info')
-                    if current_step:
-                        status_icon = get_status_icon(current_step['status'])
-                        status_text.markdown(f"**{status_icon} {current_step['description']}**")
-                elif progress_data['is_completed']:
-                    status_text.success("✅ **Generation Completed!**")
-                elif progress_data['has_failures']:
-                    status_text.error("❌ **Generation Failed**")
+                # Update final progress
+                progress_bar.progress(1.0)
+                status_text.success("✅ **Generation Completed Successfully!**")
                 
-                # Update timing info
-                elapsed = progress_data['elapsed_time']
-                elapsed_time.metric("Elapsed", f"{elapsed:.1f}s")
+                # Update all steps to completed
+                for i, placeholder in enumerate(step_placeholders):
+                    step_name = [
+                        "Requirements Analysis",
+                        "Code Generation", 
+                        "Code Review",
+                        "Documentation",
+                        "Test Generation",
+                        "Deployment Config",
+                        "UI Generation"
+                    ][i]
+                    placeholder.success(f"✅ **{i+1}. {step_name}** - Completed")
                 
-                if progress_data['estimated_remaining_time'] > 0:
-                    eta_text.metric("ETA", f"{progress_data['estimated_remaining_time']:.1f}s")
-                else:
-                    eta_text.metric("ETA", "Calculating...")
-                
-                # Update current step details
-                current_step = progress_data.get('current_step_info')
-                if current_step:
-                    step_icon = get_status_icon(current_step['status'])
-                    step_header.markdown(f"#### {step_icon} {current_step['name'].replace('_', ' ').title()}")
-                    
-                    if current_step['status'] == 'running':
-                        step_progress.progress(current_step['progress_percentage'] / 100)
-                        step_details.info(f"🔄 {current_step['description']}")
-                    elif current_step['status'] == 'completed':
-                        step_progress.progress(1.0)
-                        duration = current_step.get('duration', 0)
-                        step_details.success(f"✅ Completed in {duration:.1f}s")
-                    elif current_step['status'] == 'failed':
-                        step_progress.progress(0.0)
-                        step_details.error(f"❌ Failed")
-                
-                # Update agent activities
-                agent_activities = progress_data.get('agent_activities', {})
-                if agent_activities:
-                    agent_status_html = "<div style='display: flex; flex-wrap: wrap; gap: 10px;'>"
-                    for agent_name, activity in agent_activities.items():
-                        status_color = {
-                            'active': '#28a745',
-                            'completed': '#17a2b8',
-                            'failed': '#dc3545'
-                        }.get(activity['status'], '#6c757d')
-                        
-                        agent_status_html += f"""
-                        <div style='background: {status_color}; color: white; padding: 8px 12px; 
-                                   border-radius: 20px; font-size: 12px; font-weight: bold;'>
-                            🤖 {agent_name.replace('_', ' ').title()}: {activity['status'].title()}
-                        </div>
-                        """
-                    agent_status_html += "</div>"
-                    agent_status.markdown(agent_status_html, unsafe_allow_html=True)
-                
-                # Update live logs
-                recent_logs = progress_data.get('logs', [])
-                if recent_logs:
-                    logs_html = "<div style='background: #f8f9fa; padding: 10px; border-radius: 5px; max-height: 200px; overflow-y: auto;'>"
-                    for log in recent_logs[-10:]:  # Show last 10 logs
-                        timestamp = log['timestamp'][:19].replace('T', ' ')
-                        level_color = {
-                            'info': '#17a2b8',
-                            'success': '#28a745',
-                            'warning': '#ffc107',
-                            'error': '#dc3545'
-                        }.get(log['level'], '#6c757d')
-                        
-                        agent_name = log.get('agent_name', 'System')
-                        logs_html += f"""
-                        <div style='margin-bottom: 5px; font-size: 12px;'>
-                            <span style='color: #6c757d;'>[{timestamp}]</span>
-                            <span style='color: {level_color}; font-weight: bold;'>{agent_name}:</span>
-                            <span>{log['message']}</span>
-                        </div>
-                        """
-                    logs_html += "</div>"
-                    logs_display.markdown(logs_html, unsafe_allow_html=True)
-                
-                # Update detailed steps
-                steps = progress_data.get('steps', [])
-                if steps:
-                    steps_html = "<div style='display: flex; flex-direction: column; gap: 10px;'>"
-                    for i, step in enumerate(steps):
-                        status_icon = get_status_icon(step['status'])
-                        progress_width = step.get('progress_percentage', 0)
-                        
-                        # Step container
-                        border_color = {
-                            'pending': '#e9ecef',
-                            'running': '#007bff',
-                            'completed': '#28a745',
-                            'failed': '#dc3545'
-                        }.get(step['status'], '#e9ecef')
-                        
-                        steps_html += f"""
-                        <div style='border: 2px solid {border_color}; border-radius: 8px; padding: 12px;'>
-                            <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;'>
-                                <span style='font-weight: bold;'>{status_icon} {step['name'].replace('_', ' ').title()}</span>
-                                <span style='font-size: 12px; color: #6c757d;'>
-                                    {step.get('duration', 0):.1f}s
-                                </span>
-                            </div>
-                            <div style='font-size: 14px; color: #6c757d; margin-bottom: 8px;'>
-                                {step['description']}
-                            </div>
-                            <div style='background: #e9ecef; border-radius: 10px; height: 6px; overflow: hidden;'>
-                                <div style='background: {border_color}; height: 100%; width: {progress_width}%; transition: width 0.3s ease;'></div>
-                            </div>
-                        </div>
-                        """
-                    steps_html += "</div>"
-                    steps_display.markdown(steps_html, unsafe_allow_html=True)
+                # Display results
+                st.success("🎉 **Application generated successfully!**")
+                display_results(results)
                 
             except Exception as e:
-                # Don't let display errors break the generation
-                pass
-        
-        # Run the pipeline with periodic updates
-        placeholder = st.empty()
-        
-        # Start the pipeline in a way that allows for updates
-        with st.spinner("Initializing multi-agent pipeline..."):
-            # Initialize progress display
-            update_progress_display()
-            
-            # Run pipeline
-            results = pipeline.run_pipeline(user_input, project_name)
-            
-            # Final update
-            time.sleep(0.5)  # Brief pause to show completion
-            update_progress_display()
-            
-            # Success message
-            st.success("🎉 **Application generated successfully!**")
-            
-            # Display results
-            display_results(results)
+                # Update progress to show failure
+                progress_bar.progress(0.5)
+                status_text.error(f"❌ **Generation Failed:** {str(e)}")
+                
+                # Show error details
+                st.error(f"Pipeline execution failed: {str(e)}")
+                
+                # Show debug information
+                with st.expander("🔍 Debug Information"):
+                    st.write("**Error Details:**")
+                    st.code(str(e))
+                    
+                    try:
+                        pipeline_status = pipeline.get_pipeline_status()
+                        st.write("**Pipeline Status:**")
+                        st.json(pipeline_status)
+                    except Exception as debug_e:
+                        st.write(f"Could not retrieve pipeline status: {str(debug_e)}")
+                
+                raise
     
     except Exception as e:
         st.error(f"❌ **Generation failed:** {str(e)}")
         logger.error(f"Pipeline failed: {str(e)}")
-        
-        # Show final progress state
-        try:
-            progress_data = pipeline.get_pipeline_status()['current_progress']
-            st.json(progress_data)
-        except:
-            pass
     
     finally:
         # Reset generation state
@@ -498,67 +415,6 @@ def display_results(results: Dict[str, Any]):
             file_name=f"{results['project_name']}_full_results.json",
             mime="application/json"
         )
-
-def show_pipeline_status():
-    """Show current pipeline status and progress."""
-    
-    st.header("📊 Pipeline Status")
-    
-    try:
-        status = pipeline.get_pipeline_status()
-        
-        # Current progress
-        st.subheader("Current Progress")
-        progress = status['current_progress']
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Total Steps", progress['total_steps'])
-        
-        with col2:
-            st.metric("Completed", progress['completed_steps'])
-        
-        with col3:
-            st.metric("Failed", progress['failed_steps'])
-        
-        with col4:
-            st.metric("Progress", f"{progress['progress_percentage']:.1f}%")
-        
-        # Progress bar
-        if progress['total_steps'] > 0:
-            st.progress(progress['progress_percentage'] / 100)
-        
-        # Step details
-        if progress['steps']:
-            st.subheader("Step Details")
-            for i, step in enumerate(progress['steps']):
-                status_icon = {
-                    'pending': '⏳',
-                    'running': '🔄',
-                    'completed': '✅',
-                    'failed': '❌'
-                }.get(step['status'], '❓')
-                
-                st.write(f"{status_icon} **{step['name']}**: {step['description']}")
-                if step['duration']:
-                    st.write(f"   Duration: {step['duration']:.2f}s")
-        
-        # Statistics
-        st.subheader("Pipeline Statistics")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Total Runs", status['total_runs'])
-        
-        with col2:
-            st.metric("Successful", status['successful_runs'])
-        
-        with col3:
-            st.metric("Failed", status['failed_runs'])
-        
-    except Exception as e:
-        st.error(f"Failed to load pipeline status: {str(e)}")
 
 def show_agent_info():
     """Show information about available agents."""
