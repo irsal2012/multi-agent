@@ -125,16 +125,20 @@ class ProgressTracker:
         """Mark step as started."""
         if 0 <= step_index < len(self.steps):
             self.steps[step_index]['status'] = 'running'
-            self.steps[step_index]['start_time'] = datetime.now()
+            self.steps[step_index]['start_time'] = datetime.now().isoformat()
             self.current_step = step_index
     
     def complete_step(self, step_index: int, success: bool = True) -> None:
         """Mark step as completed."""
         if 0 <= step_index < len(self.steps):
             self.steps[step_index]['status'] = 'completed' if success else 'failed'
-            self.steps[step_index]['end_time'] = datetime.now()
+            end_time = datetime.now()
+            self.steps[step_index]['end_time'] = end_time.isoformat()
+            
             if self.steps[step_index]['start_time']:
-                duration = self.steps[step_index]['end_time'] - self.steps[step_index]['start_time']
+                # Parse the start time back to datetime for duration calculation
+                start_time = datetime.fromisoformat(self.steps[step_index]['start_time'])
+                duration = end_time - start_time
                 self.steps[step_index]['duration'] = duration.total_seconds()
     
     def get_progress(self) -> Dict[str, Any]:
