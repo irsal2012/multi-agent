@@ -10,6 +10,7 @@ from typing import Dict, Any
 
 from core.pipeline import pipeline
 from core.utils import setup_logging
+from loop_visualizer import LoopVisualizer
 
 # Configure page
 st.set_page_config(
@@ -388,11 +389,29 @@ def run_pipeline_step_by_step(user_input: str, project_name: str,
         step_placeholders[1].success("✅ **2. Code Generation** - Completed")
         progress_bar.progress(0.4)
         
-        # Step 3: Code Review
-        status_text.info("🔄 **Step 3: Reviewing code...**")
+        # Step 3: Code Review with Loop Visualization
+        status_text.info("🔄 **Step 3: Reviewing code with iterative improvements...**")
         step_placeholders[2].info("🔄 **3. Code Review** - Running")
         
-        reviewed_code = pipeline.agent_manager._review_code(code_result, requirements)
+        # Create a container for the loop visualization
+        loop_container = st.container()
+        
+        with loop_container:
+            st.markdown("#### 🔄 Real-time Generation ↔ Review Loop")
+            
+            # Create placeholders for loop visualization
+            loop_metrics_placeholder = st.empty()
+            loop_visualization_placeholder = st.empty()
+            
+            # Start the code review process
+            reviewed_code = pipeline.agent_manager._review_code(code_result, requirements)
+            
+            # Show loop visualization if available
+            loop_tracker = pipeline.agent_manager.get_loop_tracker()
+            if loop_tracker:
+                with loop_visualization_placeholder.container():
+                    visualizer = LoopVisualizer()
+                    visualizer.create_loop_interface(loop_tracker)
         
         step_placeholders[2].success("✅ **3. Code Review** - Completed")
         progress_bar.progress(0.55)

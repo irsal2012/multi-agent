@@ -4,6 +4,7 @@ Agent Manager for coordinating multiple AutoGen agents.
 
 import json
 import logging
+import time
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 
@@ -17,6 +18,7 @@ from core.utils import (
     setup_logging, save_json, save_text, generate_timestamp,
     validate_requirements, extract_code_blocks, ProgressTracker
 )
+from core.loop_progress_tracker import LoopProgressTracker
 
 class AgentManager:
     """Manages and coordinates all agents in the multi-agent framework."""
@@ -289,85 +291,245 @@ Structure your response with clear code blocks and explanations.""",
             raise
     
     def _review_code(self, code_result: Dict[str, Any], requirements: Dict[str, Any]) -> Dict[str, Any]:
-        """Step 3: Review and improve code."""
+        """Step 3: Review and improve code with loop visualization."""
         self.progress_tracker.start_step(2)
-        self.logger.info("Starting code review")
+        self.logger.info("Starting code review with loop tracking")
         
         try:
-            code_to_review = code_result['main_code']
-            requirements_text = json.dumps(requirements, indent=2)
-            
-            # Initial review
-            review_result = self.agents['user_proxy'].initiate_chat(
-                self.agents['code_reviewer'],
-                message=f"""Please perform a comprehensive code review of the following Python code:
-
-Original Requirements:
-{requirements_text}
-
-Code to Review:
-```python
-{code_to_review}
-```
-
-Please analyze:
-1. Code correctness and logic
-2. Security vulnerabilities
-3. Performance optimization opportunities
-4. Best practices adherence
-5. Error handling completeness
-6. Documentation quality
-
-Provide specific feedback and suggestions for improvement.""",
-                max_turns=2
-            )
-            
-            review_feedback = review_result.chat_history[-1]['content']
-            
-            # If issues found, iterate with coding agent
-            if any(keyword in review_feedback.lower() for keyword in ['issue', 'problem', 'fix', 'improve', 'error']):
-                self.logger.info("Issues found, requesting code improvements")
-                
-                improvement_result = self.agents['user_proxy'].initiate_chat(
-                    self.agents['python_coder'],
-                    message=f"""Based on the following code review feedback, please improve the code:
-
-Review Feedback:
-{review_feedback}
-
-Original Code:
-```python
-{code_to_review}
-```
-
-Please provide the improved version addressing all the feedback.""",
-                    max_turns=2
-                )
-                
-                improved_code_response = improvement_result.chat_history[-1]['content']
-                improved_code_blocks = extract_code_blocks(improved_code_response)
-                
-                final_code = improved_code_blocks[0] if improved_code_blocks else improved_code_response
-            else:
-                final_code = code_to_review
-            
-            reviewed_result = {
-                'final_code': final_code,
-                'review_feedback': review_feedback,
-                'original_code': code_to_review,
-                'additional_modules': code_result.get('additional_modules', []),
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            self.progress_tracker.complete_step(2, True)
-            self.logger.info("Code review completed")
-            
-            return reviewed_result
+            # Use the enhanced loop-based review process
+            return self._review_code_with_loop(code_result, requirements)
             
         except Exception as e:
             self.progress_tracker.complete_step(2, False)
             self.logger.error(f"Code review failed: {str(e)}")
             raise
+    
+    def _review_code_with_loop(self, code_result: Dict[str, Any], requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhanced code review with iterative generation-review loop."""
+        
+        # Initialize loop tracker
+        loop_tracker = LoopProgressTracker(
+            convergence_threshold=0.85,  # 85% quality threshold
+            max_iterations=3  # Maximum 3 iterations
+        )
+        
+        # Store loop tracker for external access (e.g., UI)
+        self.current_loop_tracker = loop_tracker
+        
+        code_to_review = code_result['main_code']
+        requirements_text = json.dumps(requirements, indent=2)
+        current_code = code_to_review
+        
+        # Start the loop
+        loop_tracker.start_loop()
+        
+        try:
+            while loop_tracker.should_continue_loop():
+                current_iteration = loop_tracker.current_iteration
+                
+                # Ensure we have a current iteration
+                if not current_iteration:
+                    self.logger.error("No current iteration available")
+                    break
+                
+                # Generation Phase
+                self.logger.info(f"Starting generation phase for iteration {current_iteration.iteration_number}")
+                
+                if current_iteration.iteration_number == 1:
+                    # First iteration: use the initial code
+                    loop_tracker.update_generation_progress(10, "Using initial generated code")
+                    time.sleep(0.5)  # Small delay for UI updates
+                    loop_tracker.update_generation_progress(50, "Processing initial code structure")
+                    time.sleep(0.5)
+                    loop_tracker.update_generation_progress(100, "Initial code ready for review")
+                    
+                    # Calculate initial quality score
+                    quality_score = 0.6  # Starting quality
+                    loop_tracker.complete_generation(quality_score)
+                else:
+                    # Subsequent iterations: improve based on feedback
+                    loop_tracker.update_generation_progress(10, "Analyzing feedback from previous review")
+                    time.sleep(0.5)
+                    
+                    # Get feedback from previous iteration
+                    previous_iteration = loop_tracker.iterations[-2] if len(loop_tracker.iterations) >= 2 else None
+                    previous_feedback = previous_iteration.feedback if previous_iteration else []
+                    feedback_text = "\n".join(previous_feedback) if previous_feedback else "No specific feedback"
+                    
+                    loop_tracker.update_generation_progress(30, "Generating improved code based on feedback")
+                    
+                    try:
+                        # Generate improved code based on feedback
+                        improvement_result = self.agents['user_proxy'].initiate_chat(
+                            self.agents['python_coder'],
+                            message=f"""Based on the following code review feedback, please improve the code:
+
+Review Feedback:
+{feedback_text}
+
+Current Code:
+```python
+{current_code}
+```
+
+Original Requirements:
+{requirements_text}
+
+Please provide an improved version that addresses all the feedback while maintaining the original requirements.""",
+                            max_turns=2
+                        )
+                        
+                        loop_tracker.update_generation_progress(70, "Processing improved code")
+                        
+                        improved_code_response = improvement_result.chat_history[-1]['content']
+                        improved_code_blocks = extract_code_blocks(improved_code_response)
+                        current_code = improved_code_blocks[0] if improved_code_blocks else improved_code_response
+                        
+                        loop_tracker.update_generation_progress(100, "Code generation completed")
+                        
+                        # Calculate quality score based on iteration
+                        quality_score = min(0.6 + (current_iteration.iteration_number * 0.1), 1.0)
+                        loop_tracker.complete_generation(quality_score)
+                        
+                    except Exception as gen_error:
+                        self.logger.error(f"Generation failed: {str(gen_error)}")
+                        loop_tracker.fail_loop(f"Generation failed: {str(gen_error)}")
+                        break
+                
+                # Wait for review phase to start (complete_generation should have started it)
+                if loop_tracker.current_state.value != "review":
+                    self.logger.error(f"Expected review state, got {loop_tracker.current_state.value}")
+                    break
+                
+                # Review Phase
+                self.logger.info(f"Starting review phase for iteration {current_iteration.iteration_number}")
+                
+                loop_tracker.update_review_progress(10, "Starting comprehensive code review")
+                
+                try:
+                    review_result = self.agents['user_proxy'].initiate_chat(
+                        self.agents['code_reviewer'],
+                        message=f"""Please perform a comprehensive code review of the following Python code:
+
+Original Requirements:
+{requirements_text}
+
+Code to Review (Iteration #{current_iteration.iteration_number}):
+```python
+{current_code}
+```
+
+Please analyze:
+1. Code correctness and logic
+2. Security vulnerabilities  
+3. Performance optimization opportunities
+4. Best practices adherence
+5. Error handling completeness
+6. Documentation quality
+
+Provide specific, actionable feedback. Rate the overall code quality on a scale of 0.0 to 1.0.
+If the code quality is above 0.85, indicate that it's ready for production.
+Format your response with:
+- QUALITY_SCORE: [0.0-1.0]
+- FEEDBACK: [specific improvements needed]
+- STATUS: [READY/NEEDS_IMPROVEMENT]""",
+                        max_turns=2
+                    )
+                    
+                    loop_tracker.update_review_progress(50, "Analyzing code quality and generating feedback")
+                    
+                    review_response = review_result.chat_history[-1]['content']
+                    
+                    # Parse review response
+                    quality_score, feedback_items, is_ready = self._parse_review_response(review_response)
+                    
+                    loop_tracker.update_review_progress(80, "Processing review feedback")
+                    
+                    # Add feedback to tracker
+                    for feedback in feedback_items:
+                        loop_tracker.add_feedback(feedback)
+                    
+                    loop_tracker.update_review_progress(100, "Review completed")
+                    
+                    # Calculate convergence score
+                    convergence_score = quality_score
+                    
+                    # Complete the review phase - this will determine if we continue or finish
+                    loop_tracker.complete_review(convergence_score)
+                    
+                    # Update progress tracker
+                    loop_progress = loop_tracker.get_convergence_progress()
+                    self.progress_tracker.update_step_progress(2, loop_progress, 
+                        f"Loop iteration #{current_iteration.iteration_number} completed")
+                    
+                except Exception as review_error:
+                    self.logger.error(f"Review failed: {str(review_error)}")
+                    loop_tracker.fail_loop(f"Review failed: {str(review_error)}")
+                    break
+                
+                # Check if loop should continue
+                if not loop_tracker.should_continue_loop():
+                    self.logger.info("Loop convergence achieved or max iterations reached")
+                    break
+            
+            # Loop completed - compile final results
+            final_iteration = loop_tracker.iterations[-1] if loop_tracker.iterations else None
+            
+            reviewed_result = {
+                'final_code': current_code,
+                'review_feedback': loop_tracker.get_recent_logs(10),
+                'original_code': code_to_review,
+                'additional_modules': code_result.get('additional_modules', []),
+                'loop_summary': {
+                    'total_iterations': len(loop_tracker.iterations),
+                    'final_quality_score': final_iteration.quality_score if final_iteration else 0.0,
+                    'final_convergence_score': final_iteration.convergence_score if final_iteration else 0.0,
+                    'total_feedback_items': sum(len(it.feedback) for it in loop_tracker.iterations),
+                    'loop_duration': loop_tracker.get_total_duration()
+                },
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            self.progress_tracker.complete_step(2, True, 
+                f"Code review completed after {len(loop_tracker.iterations)} iterations")
+            self.logger.info(f"Code review loop completed with {len(loop_tracker.iterations)} iterations")
+            
+            return reviewed_result
+            
+        except Exception as e:
+            self.logger.error(f"Loop failed with error: {str(e)}")
+            loop_tracker.fail_loop(str(e))
+            raise
+    
+    def _parse_review_response(self, review_response: str) -> Tuple[float, List[str], bool]:
+        """Parse the review response to extract quality score and feedback."""
+        import re
+        
+        # Extract quality score
+        quality_match = re.search(r'QUALITY_SCORE:\s*([0-9.]+)', review_response)
+        quality_score = float(quality_match.group(1)) if quality_match else 0.7
+        
+        # Extract status
+        status_match = re.search(r'STATUS:\s*(READY|NEEDS_IMPROVEMENT)', review_response)
+        is_ready = status_match and status_match.group(1) == 'READY'
+        
+        # Extract feedback items
+        feedback_section = re.search(r'FEEDBACK:\s*(.*?)(?=STATUS:|$)', review_response, re.DOTALL)
+        if feedback_section:
+            feedback_text = feedback_section.group(1).strip()
+            # Split into individual feedback items
+            feedback_items = [item.strip() for item in feedback_text.split('\n') if item.strip() and not item.strip().startswith('-')]
+            # Clean up feedback items
+            feedback_items = [item.lstrip('- ').strip() for item in feedback_items if len(item.strip()) > 10]
+        else:
+            # Fallback: extract general feedback
+            feedback_items = []
+            lines = review_response.split('\n')
+            for line in lines:
+                if any(keyword in line.lower() for keyword in ['improve', 'fix', 'add', 'consider', 'should']):
+                    feedback_items.append(line.strip())
+        
+        return quality_score, feedback_items[:5], is_ready  # Limit to 5 feedback items
     
     def _generate_documentation(self, code_result: Dict[str, Any], requirements: Dict[str, Any]) -> Dict[str, Any]:
         """Step 4: Generate comprehensive documentation."""
@@ -609,7 +771,14 @@ Make it user-friendly and professional.""",
         """Get current progress status."""
         return self.progress_tracker.get_progress()
     
+    def get_loop_tracker(self) -> Optional[LoopProgressTracker]:
+        """Get the current loop progress tracker if available."""
+        return getattr(self, 'current_loop_tracker', None)
+    
     def reset_progress(self) -> None:
         """Reset progress tracker for new project."""
         self.progress_tracker = ProgressTracker()
         self._setup_progress_steps()
+        # Clear any existing loop tracker
+        if hasattr(self, 'current_loop_tracker'):
+            delattr(self, 'current_loop_tracker')
