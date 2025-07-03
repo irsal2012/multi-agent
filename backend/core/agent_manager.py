@@ -768,8 +768,99 @@ Make it user-friendly and professional.""",
         self.logger.info(f"Project results saved to {project_dir}")
     
     def get_progress(self) -> Dict[str, Any]:
-        """Get current progress status."""
-        return self.progress_tracker.get_progress()
+        """Get current progress status with proper formatting for progress service."""
+        try:
+            raw_progress = self.progress_tracker.get_progress()
+            
+            # Convert to format expected by progress service
+            formatted_progress = {
+                'total_steps': raw_progress.get('total_steps', 7),
+                'completed_steps': raw_progress.get('completed_steps', 0),
+                'failed_steps': raw_progress.get('failed_steps', 0),
+                'progress_percentage': raw_progress.get('progress_percentage', 0.0),
+                'steps': self._format_steps_for_service(raw_progress.get('steps', [])),
+                'elapsed_time': raw_progress.get('elapsed_time', 0.0),
+                'estimated_remaining_time': raw_progress.get('estimated_remaining_time', 0.0),
+                'is_running': raw_progress.get('is_running', False),
+                'is_completed': raw_progress.get('is_completed', False),
+                'has_failures': raw_progress.get('has_failures', False),
+                'current_step_info': self._format_current_step_info(raw_progress.get('current_step_info')),
+                'logs': self._format_logs_for_service(raw_progress.get('logs', []))
+            }
+            
+            return formatted_progress
+            
+        except Exception as e:
+            self.logger.error(f"Error getting progress: {str(e)}")
+            # Return a safe default progress state
+            return {
+                'total_steps': 7,
+                'completed_steps': 0,
+                'failed_steps': 0,
+                'progress_percentage': 0.0,
+                'steps': [],
+                'elapsed_time': 0.0,
+                'estimated_remaining_time': 0.0,
+                'is_running': False,
+                'is_completed': False,
+                'has_failures': False,
+                'current_step_info': None,
+                'logs': []
+            }
+    
+    def _format_steps_for_service(self, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Format steps for progress service compatibility."""
+        formatted_steps = []
+        
+        for step in steps:
+            formatted_step = {
+                'name': step.get('name', ''),
+                'description': step.get('description', ''),
+                'status': step.get('status', 'pending'),
+                'progress_percentage': step.get('progress_percentage', 0.0),
+                'start_time': step.get('start_time'),
+                'end_time': step.get('end_time'),
+                'duration': step.get('duration'),
+                'agent_name': step.get('agent_name'),
+                'substeps': step.get('substeps', [])
+            }
+            formatted_steps.append(formatted_step)
+        
+        return formatted_steps
+    
+    def _format_current_step_info(self, current_step_info: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Format current step info for progress service."""
+        if not current_step_info:
+            return None
+        
+        return {
+            'name': current_step_info.get('name', ''),
+            'description': current_step_info.get('description', ''),
+            'status': current_step_info.get('status', 'pending'),
+            'progress_percentage': current_step_info.get('progress_percentage', 0.0),
+            'start_time': current_step_info.get('start_time'),
+            'end_time': current_step_info.get('end_time'),
+            'duration': current_step_info.get('duration'),
+            'agent_name': current_step_info.get('agent_name'),
+            'substeps': current_step_info.get('substeps', [])
+        }
+    
+    def _format_logs_for_service(self, logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Format logs for progress service compatibility."""
+        formatted_logs = []
+        
+        for log in logs:
+            formatted_log = {
+                'timestamp': log.get('timestamp'),
+                'level': log.get('level', 'INFO').upper(),
+                'message': log.get('message', ''),
+                'agent': log.get('agent_name'),
+                'step': None,  # Can be enhanced later
+                'metadata': {}
+            }
+            formatted_logs.append(formatted_log)
+        
+        return formatted_logs
     
     def get_loop_tracker(self) -> Optional[LoopProgressTracker]:
         """Get the current loop progress tracker if available."""

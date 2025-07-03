@@ -212,6 +212,82 @@ async def get_all_active_projects(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get active projects: {str(e)}")
 
+@router.get("/test/{project_id}")
+async def test_progress_tracking(
+    project_id: str,
+    progress_service: ProgressService = Depends(get_progress_service)
+):
+    """
+    Test endpoint to verify progress tracking is working.
+    Creates fake progress data for testing.
+    """
+    try:
+        # Create fake project metadata for testing
+        from models.schemas import ProjectMetadata, ProjectStatus
+        from datetime import datetime
+        
+        fake_metadata = ProjectMetadata(
+            project_id=project_id,
+            project_name=f"test_project_{project_id}",
+            user_input="Test project for progress tracking",
+            status=ProjectStatus.RUNNING
+        )
+        
+        # Create progress tracking
+        progress_service.create_project_progress(project_id, fake_metadata)
+        
+        # Update with some test progress
+        test_progress = {
+            'total_steps': 7,
+            'completed_steps': 2,
+            'failed_steps': 0,
+            'progress_percentage': 28.5,
+            'steps': [
+                {
+                    'name': 'requirements_analysis',
+                    'description': 'Analyzing requirements from user input',
+                    'status': 'completed',
+                    'progress_percentage': 100.0,
+                    'start_time': datetime.now().isoformat(),
+                    'end_time': datetime.now().isoformat(),
+                    'agent_name': 'requirement_analyst'
+                },
+                {
+                    'name': 'code_generation',
+                    'description': 'Generating Python code from requirements',
+                    'status': 'running',
+                    'progress_percentage': 45.0,
+                    'start_time': datetime.now().isoformat(),
+                    'agent_name': 'python_coder'
+                }
+            ],
+            'is_running': True,
+            'is_completed': False,
+            'has_failures': False,
+            'current_step_info': {
+                'name': 'code_generation',
+                'description': 'Generating Python code from requirements',
+                'status': 'running',
+                'progress_percentage': 45.0,
+                'agent_name': 'python_coder'
+            }
+        }
+        
+        progress_service.update_project_progress(project_id, test_progress)
+        
+        # Get the updated progress
+        updated_progress = progress_service.get_project_progress(project_id)
+        
+        return {
+            "message": "Test progress created successfully",
+            "project_id": project_id,
+            "progress": updated_progress.dict() if updated_progress else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Test progress tracking failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Test failed: {str(e)}")
+
 # Utility function to broadcast progress updates (can be called from services)
 async def broadcast_progress_update(project_id: str, progress_data: dict):
     """Broadcast progress update to all connected WebSocket clients for a project."""

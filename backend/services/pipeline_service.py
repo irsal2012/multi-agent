@@ -128,27 +128,166 @@ class PipelineService:
     ) -> Dict[str, Any]:
         """Run the pipeline synchronously in a thread."""
         
-        # Set up progress monitoring
-        original_get_progress = self.pipeline.agent_manager.get_progress
-        
-        def monitored_get_progress():
-            progress = original_get_progress()
-            # Update our progress service
-            self.progress_service.update_project_progress(project_id, progress)
-            # Call the callback
-            progress_callback()
-            return progress
-        
-        # Replace the get_progress method temporarily
-        self.pipeline.agent_manager.get_progress = monitored_get_progress
-        
         try:
+            # Initialize progress tracking with proper step structure
+            initial_steps = [
+                {'name': 'Requirements Analysis', 'description': 'Analyzing requirements from user input', 'status': 'pending', 'progress_percentage': 0},
+                {'name': 'Code Generation', 'description': 'Generating Python code from requirements', 'status': 'pending', 'progress_percentage': 0},
+                {'name': 'Code Review', 'description': 'Reviewing code for quality and security', 'status': 'pending', 'progress_percentage': 0},
+                {'name': 'Documentation', 'description': 'Creating comprehensive documentation', 'status': 'pending', 'progress_percentage': 0},
+                {'name': 'Test Generation', 'description': 'Generating test cases', 'status': 'pending', 'progress_percentage': 0},
+                {'name': 'Deployment Config', 'description': 'Creating deployment configurations', 'status': 'pending', 'progress_percentage': 0},
+                {'name': 'UI Generation', 'description': 'Creating Streamlit user interface', 'status': 'pending', 'progress_percentage': 0}
+            ]
+            
+            self.progress_service.update_project_progress(project_id, {
+                'total_steps': 7,
+                'completed_steps': 0,
+                'failed_steps': 0,
+                'progress_percentage': 0.0,
+                'steps': initial_steps,
+                'is_running': True,
+                'is_completed': False,
+                'has_failures': False,
+                'current_step_info': initial_steps[0]
+            })
+            
+            self.logger.info(f"Starting pipeline execution for project {project_id}")
+            
+            # Set up progress monitoring with proper integration
+            original_get_progress = self.pipeline.agent_manager.get_progress
+            
+            def monitored_get_progress():
+                try:
+                    # Get progress from agent manager
+                    agent_progress = original_get_progress()
+                    
+                    # Convert agent manager progress to progress service format
+                    progress_data = self._convert_agent_progress_to_service_format(agent_progress)
+                    
+                    # Update our progress service
+                    self.progress_service.update_project_progress(project_id, progress_data)
+                    
+                    # Call the callback
+                    progress_callback()
+                    
+                    return agent_progress
+                except Exception as e:
+                    self.logger.error(f"Error in progress monitoring: {str(e)}")
+                    return original_get_progress()
+            
+            # Replace the get_progress method temporarily
+            self.pipeline.agent_manager.get_progress = monitored_get_progress
+            
+            # Set up periodic progress updates
+            import threading
+            import time
+            
+            def periodic_progress_update():
+                """Periodically update progress even if get_progress isn't called."""
+                update_count = 0
+                last_progress_percentage = 0
+                consecutive_errors = 0
+                
+                while (project_id in self.active_projects and 
+                       self.active_projects[project_id].status == ProjectStatus.RUNNING):
+                    try:
+                        update_count += 1
+                        self.logger.debug(f"Periodic progress update #{update_count} for project {project_id}")
+                        
+                        # Try to get progress from agent manager
+                        progress_updated = False
+                        try:
+                            agent_progress = self.pipeline.agent_manager.get_progress()
+                            progress_data = self._convert_agent_progress_to_service_format(agent_progress)
+                            
+                            # Only update if we have meaningful progress data
+                            if progress_data.get('progress_percentage', 0) > 0 or progress_data.get('is_running'):
+                                self.progress_service.update_project_progress(project_id, progress_data)
+                                last_progress_percentage = progress_data.get('progress_percentage', 0)
+                                progress_updated = True
+                                consecutive_errors = 0  # Reset error counter
+                                self.logger.debug(f"Progress updated: {last_progress_percentage:.1f}%")
+                            
+                        except Exception as progress_error:
+                            consecutive_errors += 1
+                            self.logger.debug(f"Agent progress error #{consecutive_errors}: {str(progress_error)}")
+                            
+                            # If we haven't had progress for a while, provide fallback updates
+                            if consecutive_errors > 3:
+                                fallback_progress = min(last_progress_percentage + (update_count * 0.5), 95)
+                                fallback_data = {
+                                    'is_running': True,
+                                    'progress_percentage': fallback_progress,
+                                    'current_step_info': {
+                                        'name': 'Processing',
+                                        'description': 'Pipeline is running...',
+                                        'status': 'running',
+                                        'progress_percentage': fallback_progress
+                                    }
+                                }
+                                self.progress_service.update_project_progress(project_id, fallback_data)
+                                progress_updated = True
+                                self.logger.debug(f"Fallback progress: {fallback_progress:.1f}%")
+                        
+                        # Call progress callback if we updated anything
+                        if progress_updated:
+                            try:
+                                progress_callback()
+                            except Exception as callback_error:
+                                self.logger.debug(f"Progress callback error: {str(callback_error)}")
+                        
+                        # Sleep between updates
+                        time.sleep(1.5)  # Update every 1.5 seconds for more responsive UI
+                        
+                    except Exception as e:
+                        self.logger.error(f"Periodic progress update failed: {str(e)}")
+                        consecutive_errors += 1
+                        if consecutive_errors > 10:
+                            self.logger.error("Too many consecutive errors, stopping periodic updates")
+                            break
+                        time.sleep(2)  # Wait longer on error
+                
+                self.logger.info(f"Periodic progress updates stopped for project {project_id} after {update_count} updates")
+            
+            # Start periodic updates in background
+            progress_thread = threading.Thread(target=periodic_progress_update, daemon=True)
+            progress_thread.start()
+            
+            # Give the progress thread a moment to start
+            time.sleep(0.5)
+            
             # Run the actual pipeline
+            self.logger.info(f"Executing pipeline for project {project_id}")
             result = self.pipeline.run_pipeline(user_input, project_name)
+            
+            # Final progress update
+            final_progress = self.pipeline.agent_manager.get_progress()
+            final_progress_data = self._convert_agent_progress_to_service_format(final_progress)
+            final_progress_data.update({
+                'is_running': False,
+                'is_completed': True,
+                'progress_percentage': 100.0
+            })
+            self.progress_service.update_project_progress(project_id, final_progress_data)
+            
+            self.logger.info(f"Pipeline execution completed for project {project_id}")
             return result
+            
+        except Exception as e:
+            self.logger.error(f"Pipeline execution failed for project {project_id}: {str(e)}")
+            # Update progress to show failure
+            self.progress_service.update_project_progress(project_id, {
+                'is_running': False,
+                'is_completed': False,
+                'has_failures': True,
+                'progress_percentage': 0.0
+            })
+            raise
         finally:
             # Restore original method
-            self.pipeline.agent_manager.get_progress = original_get_progress
+            if 'original_get_progress' in locals():
+                self.pipeline.agent_manager.get_progress = original_get_progress
     
     async def get_project_status(self, project_id: str) -> Optional[ProjectMetadata]:
         """Get project status by ID."""
@@ -187,6 +326,51 @@ class PipelineService:
         """Get agent information."""
         return self.pipeline.get_agent_info()
     
+    def _convert_agent_progress_to_service_format(self, agent_progress: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert agent manager progress format to progress service format."""
+        try:
+            # The agent manager now returns properly formatted data, so we can use it directly
+            # with minimal conversion
+            
+            # Ensure all required fields are present with defaults
+            converted_progress = {
+                'total_steps': agent_progress.get('total_steps', 7),
+                'completed_steps': agent_progress.get('completed_steps', 0),
+                'failed_steps': agent_progress.get('failed_steps', 0),
+                'progress_percentage': agent_progress.get('progress_percentage', 0.0),
+                'steps': agent_progress.get('steps', []),
+                'elapsed_time': agent_progress.get('elapsed_time', 0.0),
+                'estimated_remaining_time': agent_progress.get('estimated_remaining_time', 0.0),
+                'is_running': agent_progress.get('is_running', False),
+                'is_completed': agent_progress.get('is_completed', False),
+                'has_failures': agent_progress.get('has_failures', False),
+                'current_step_info': agent_progress.get('current_step_info'),
+                'logs': agent_progress.get('logs', [])
+            }
+            
+            self.logger.debug(f"Converted progress: {converted_progress['progress_percentage']:.1f}% complete, "
+                            f"{converted_progress['completed_steps']}/{converted_progress['total_steps']} steps")
+            
+            return converted_progress
+            
+        except Exception as e:
+            self.logger.error(f"Error converting agent progress: {str(e)}")
+            # Return minimal progress data with running status
+            return {
+                'total_steps': 7,
+                'completed_steps': 0,
+                'failed_steps': 0,
+                'progress_percentage': 0.0,
+                'steps': [],
+                'elapsed_time': 0.0,
+                'estimated_remaining_time': 0.0,
+                'is_running': True,
+                'is_completed': False,
+                'has_failures': False,
+                'current_step_info': None,
+                'logs': []
+            }
+
     def cleanup_completed_projects(self, max_age_hours: int = 24):
         """Clean up old completed projects."""
         cutoff_time = datetime.now().timestamp() - (max_age_hours * 3600)

@@ -201,3 +201,15 @@ class APIClient:
         except Exception as e:
             self.logger.error(f"Failed to get recent projects: {str(e)}")
             return None
+    
+    def test_progress_tracking(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Test progress tracking with fake data."""
+        try:
+            with self._get_client() as client:
+                response = client.get(f"/api/v1/progress/test/{project_id}")
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            self.logger.error(f"Failed to test progress tracking: {str(e)}")
+            st.error(f"Progress tracking test failed: {str(e)}")
+            return None

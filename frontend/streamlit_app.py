@@ -135,6 +135,35 @@ def show_code_generator():
         except Exception as e:
             st.error(f"Failed to load pipeline status: {str(e)}")
     
+    # Progress Tracking Test Section
+    with st.expander("🧪 Test Progress Tracking", expanded=False):
+        st.markdown("Use this section to test the progress tracking functionality.")
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            test_project_id = st.text_input(
+                "Test Project ID", 
+                value="test-123",
+                help="Enter a project ID to test progress tracking"
+            )
+        
+        with col2:
+            if st.button("🧪 Test Progress", use_container_width=True):
+                if test_project_id:
+                    with st.spinner("Creating test progress data..."):
+                        test_result = api_client.test_progress_tracking(test_project_id)
+                        if test_result:
+                            st.success("✅ Test progress created successfully!")
+                            st.json(test_result)
+                            
+                            # Show the test progress
+                            st.markdown("### Test Progress Display")
+                            show_generation_progress(test_project_id)
+                        else:
+                            st.error("❌ Failed to create test progress")
+                else:
+                    st.error("Please enter a test project ID")
+    
     # Quick Examples
     st.subheader("Quick Examples")
     col1, col2, col3 = st.columns(3)
@@ -243,6 +272,7 @@ def show_generation_progress(project_id: str):
     # Create progress interface
     progress_bar = st.progress(0)
     status_text = st.empty()
+    debug_info = st.empty()
     
     # Show pipeline steps
     st.markdown("### 📋 Pipeline Steps")
@@ -262,18 +292,46 @@ def show_generation_progress(project_id: str):
         placeholder.info(f"⏳ **{i+1}. {step_name}** - Waiting")
         step_placeholders.append(placeholder)
     
-    # Poll for progress updates
+    # Add cancel button
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("❌ Cancel", key="cancel_generation"):
+            if api_client.cancel_project(project_id):
+                st.warning("Generation cancelled")
+                return
+            else:
+                st.error("Failed to cancel generation")
+    
+    # Poll for progress updates with improved error handling
     max_polls = 300  # 5 minutes with 1-second intervals
     poll_count = 0
+    consecutive_errors = 0
+    last_progress_percentage = 0
     
     while poll_count < max_polls:
         try:
             progress = api_client.get_project_progress(project_id)
             
             if progress:
+                consecutive_errors = 0  # Reset error counter on success
+                
                 # Update main progress bar
                 progress_percentage = progress.get('progress_percentage', 0)
+                if progress_percentage > last_progress_percentage:
+                    last_progress_percentage = progress_percentage
                 progress_bar.progress(progress_percentage / 100)
+                
+                # Show debug info in expander
+                with debug_info.expander("🔍 Debug Info", expanded=False):
+                    st.json({
+                        'progress_percentage': progress_percentage,
+                        'is_running': progress.get('is_running', False),
+                        'is_completed': progress.get('is_completed', False),
+                        'has_failures': progress.get('has_failures', False),
+                        'completed_steps': progress.get('completed_steps', 0),
+                        'total_steps': progress.get('total_steps', 0),
+                        'poll_count': poll_count
+                    })
                 
                 # Update status text
                 if progress.get('is_completed'):
@@ -281,11 +339,25 @@ def show_generation_progress(project_id: str):
                     break
                 elif progress.get('has_failures'):
                     status_text.error("❌ **Generation Failed**")
+                    # Show error details if available
+                    logs = progress.get('logs', [])
+                    error_logs = [log for log in logs if log.get('level') == 'ERROR']
+                    if error_logs:
+                        st.error(f"Error details: {error_logs[-1].get('message', 'Unknown error')}")
                     break
                 elif progress.get('is_running'):
                     current_step_info = progress.get('current_step_info')
                     if current_step_info:
-                        status_text.info(f"🔄 **{current_step_info.get('description', 'Processing...')}**")
+                        step_desc = current_step_info.get('description', 'Processing...')
+                        agent_name = current_step_info.get('agent_name', '')
+                        if agent_name:
+                            status_text.info(f"🔄 **{step_desc}** (Agent: {agent_name})")
+                        else:
+                            status_text.info(f"🔄 **{step_desc}**")
+                    else:
+                        status_text.info(f"🔄 **Processing...** ({progress_percentage:.1f}% complete)")
+                else:
+                    status_text.info(f"⏳ **Initializing...** ({progress_percentage:.1f}% complete)")
                 
                 # Update individual step displays
                 steps = progress.get('steps', [])
@@ -293,22 +365,59 @@ def show_generation_progress(project_id: str):
                     if i < len(step_placeholders):
                         step_name = step_names[i] if i < len(step_names) else f"Step {i+1}"
                         status = step.get('status', 'pending')
+                        step_progress = step.get('progress_percentage', 0)
                         
                         if status == 'running':
-                            step_placeholders[i].info(f"🔄 **{i+1}. {step_name}** - Running")
+                            step_placeholders[i].info(f"🔄 **{i+1}. {step_name}** - Running ({step_progress:.0f}%)")
                         elif status == 'completed':
                             step_placeholders[i].success(f"✅ **{i+1}. {step_name}** - Completed")
                         elif status == 'failed':
                             step_placeholders[i].error(f"❌ **{i+1}. {step_name}** - Failed")
                         else:
                             step_placeholders[i].info(f"⏳ **{i+1}. {step_name}** - Waiting")
+                
+                # Update remaining steps as waiting if we have fewer steps than expected
+                for i in range(len(steps), len(step_placeholders)):
+                    step_name = step_names[i] if i < len(step_names) else f"Step {i+1}"
+                    step_placeholders[i].info(f"⏳ **{i+1}. {step_name}** - Waiting")
+            
+            else:
+                consecutive_errors += 1
+                if consecutive_errors <= 3:
+                    # Don't show warnings for the first few attempts
+                    pass
+                elif consecutive_errors <= 8:
+                    status_text.warning(f"⚠️ Waiting for progress data... (attempt {consecutive_errors})")
+                elif consecutive_errors <= 15:
+                    status_text.warning(f"⚠️ No progress data received for {consecutive_errors} consecutive attempts. Pipeline may still be initializing...")
+                else:
+                    status_text.error("❌ Lost connection to backend or pipeline failed to start. Please check if the backend is running.")
+                    break
             
             time.sleep(1)
             poll_count += 1
             
         except Exception as e:
-            st.error(f"Error polling progress: {str(e)}")
-            break
+            consecutive_errors += 1
+            error_msg = str(e)
+            
+            if consecutive_errors <= 3:
+                # Show temporary error message
+                status_text.warning(f"⚠️ Connection issue (attempt {consecutive_errors}/3): {error_msg}")
+            elif consecutive_errors <= 10:
+                # Show persistent warning
+                st.warning(f"⚠️ Persistent connection issues. Retrying... (attempt {consecutive_errors})")
+            else:
+                # Give up after too many errors
+                st.error(f"❌ Too many connection errors. Please check your backend connection: {error_msg}")
+                break
+            
+            time.sleep(2)  # Wait longer between retries on error
+            poll_count += 1
+    
+    # Handle timeout
+    if poll_count >= max_polls:
+        st.warning("⏰ Progress polling timed out. The generation may still be running in the background.")
     
     # Check final result
     try:
@@ -316,9 +425,20 @@ def show_generation_progress(project_id: str):
         if result:
             display_results(result)
         else:
-            st.warning("Generation completed but no results available")
+            # Try to get project status to see what happened
+            try:
+                final_progress = api_client.get_project_progress(project_id)
+                if final_progress and final_progress.get('is_completed'):
+                    st.warning("Generation completed but results are not yet available. Please try refreshing the page.")
+                elif final_progress and final_progress.get('has_failures'):
+                    st.error("Generation failed. Check the logs above for details.")
+                else:
+                    st.info("Generation may still be in progress. Please wait a moment and refresh the page.")
+            except:
+                st.warning("Generation status unclear. Please check the Project History page for updates.")
     except Exception as e:
         st.error(f"Failed to get final results: {str(e)}")
+        st.info("You can check the Project History page to see if your generation completed successfully.")
 
 def display_results(results: Dict[str, Any]):
     """Display the generated application results."""
