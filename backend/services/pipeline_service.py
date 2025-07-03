@@ -178,7 +178,20 @@ class PipelineService:
                     return agent_progress
                 except Exception as e:
                     self.logger.error(f"Error in progress monitoring: {str(e)}")
-                    return original_get_progress()
+                    # Return the original progress even on error
+                    try:
+                        return original_get_progress()
+                    except:
+                        # Return minimal progress if everything fails
+                        return {
+                            'total_steps': 7,
+                            'completed_steps': 0,
+                            'failed_steps': 0,
+                            'progress_percentage': 0.0,
+                            'is_running': True,
+                            'is_completed': False,
+                            'has_failures': False
+                        }
             
             # Replace the get_progress method temporarily
             self.pipeline.agent_manager.get_progress = monitored_get_progress
@@ -336,12 +349,18 @@ class PipelineService:
             # The agent manager now returns properly formatted data, so we can use it directly
             # with minimal conversion
             
+            # Clamp progress percentage to avoid validation errors
+            progress_percentage = max(0.0, min(100.0, agent_progress.get('progress_percentage', 0.0)))
+            
+            # Clamp progress percentage to avoid validation errors (floating point precision issues)
+            progress_percentage = max(0.0, min(100.0, agent_progress.get('progress_percentage', 0.0)))
+            
             # Ensure all required fields are present with defaults
             converted_progress = {
                 'total_steps': agent_progress.get('total_steps', 7),
                 'completed_steps': agent_progress.get('completed_steps', 0),
                 'failed_steps': agent_progress.get('failed_steps', 0),
-                'progress_percentage': agent_progress.get('progress_percentage', 0.0),
+                'progress_percentage': progress_percentage,
                 'steps': agent_progress.get('steps', []),
                 'elapsed_time': agent_progress.get('elapsed_time', 0.0),
                 'estimated_remaining_time': agent_progress.get('estimated_remaining_time', 0.0),
