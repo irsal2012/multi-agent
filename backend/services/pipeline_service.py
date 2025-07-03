@@ -12,15 +12,19 @@ from concurrent.futures import ThreadPoolExecutor
 from core.pipeline import MultiAgentPipeline
 from models.schemas import ProjectMetadata, ProjectStatus, ProgressUpdate
 from models.responses import GenerationResponse, ProjectResult, ValidationResponse
-from .progress_service import ProgressService
 
 class PipelineService:
     """Service for managing pipeline execution."""
     
-    def __init__(self):
+    def __init__(self, progress_service=None):
         self.logger = logging.getLogger(__name__)
         self.pipeline = MultiAgentPipeline()
-        self.progress_service = ProgressService()
+        # Use injected progress service or create new one (for backward compatibility)
+        if progress_service is not None:
+            self.progress_service = progress_service
+        else:
+            from .progress_service import ProgressService
+            self.progress_service = ProgressService()
         self.active_projects: Dict[str, ProjectMetadata] = {}
         self.executor = ThreadPoolExecutor(max_workers=2)  # Limit concurrent pipelines
         

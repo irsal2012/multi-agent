@@ -4,6 +4,7 @@ HTTP API client for communicating with the FastAPI backend.
 
 import httpx
 import logging
+import time
 from typing import Dict, Any, Optional, List
 import streamlit as st
 
@@ -13,12 +14,15 @@ class APIClient:
     def __init__(self, base_url: str = "http://localhost:8000"):
         self.base_url = base_url
         self.logger = logging.getLogger(__name__)
+        self._connection_status = None
+        self._last_health_check = 0
         
     def _get_client(self) -> httpx.Client:
         """Get HTTP client with timeout configuration."""
         return httpx.Client(
             base_url=self.base_url,
-            timeout=httpx.Timeout(30.0, connect=5.0)
+            timeout=httpx.Timeout(30.0, connect=10.0),  # Increased connect timeout
+            follow_redirects=True
         )
     
     async def _get_async_client(self) -> httpx.AsyncClient:
@@ -28,15 +32,78 @@ class APIClient:
             timeout=httpx.Timeout(30.0, connect=5.0)
         )
     
-    def health_check(self) -> bool:
-        """Check if the backend is healthy."""
+    def health_check(self, max_retries: int = 3, retry_delay: float = 1.0) -> bool:
+        """Check if the backend is healthy with retry logic."""
+        current_time = time.time()
+        
+        # Use cached result if recent (within 5 seconds)
+        if (self._connection_status is not None and 
+            current_time - self._last_health_check < 5.0):
+            return self._connection_status
+        
+        for attempt in range(max_retries):
+            try:
+                with self._get_client() as client:
+                    response = client.get("/health")
+                    if response.status_code == 200:
+                        # Check if response indicates services are ready
+                        try:
+                            health_data = response.json()
+                            is_ready = health_data.get('ready', True)  # Default to True for backward compatibility
+                            self._connection_status = is_ready
+                            self._last_health_check = current_time
+                            
+                            if not is_ready:
+                                self.logger.warning(f"Backend services not ready: {health_data}")
+                            
+                            return is_ready
+                        except Exception:
+                            # If we can't parse JSON, assume healthy if status is 200
+                            self._connection_status = True
+                            self._last_health_check = current_time
+                            return True
+                    else:
+                        self.logger.warning(f"Health check returned status {response.status_code}")
+                        
+            except httpx.ConnectError as e:
+                self.logger.warning(f"Connection failed (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+                    
+            except httpx.TimeoutException as e:
+                self.logger.warning(f"Health check timeout (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    
+            except Exception as e:
+                self.logger.error(f"Health check failed (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+        
+        # All attempts failed
+        self._connection_status = False
+        self._last_health_check = current_time
+        return False
+    
+    def get_detailed_health_status(self) -> Dict[str, Any]:
+        """Get detailed health status from backend."""
         try:
             with self._get_client() as client:
                 response = client.get("/health")
-                return response.status_code == 200
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    return {
+                        "status": "unhealthy",
+                        "error": f"HTTP {response.status_code}",
+                        "ready": False
+                    }
         except Exception as e:
-            self.logger.error(f"Health check failed: {str(e)}")
-            return False
+            return {
+                "status": "unreachable",
+                "error": str(e),
+                "ready": False
+            }
     
     def generate_code(self, user_input: str, project_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Start code generation."""

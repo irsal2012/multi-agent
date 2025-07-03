@@ -18,7 +18,9 @@ def get_pipeline_service() -> PipelineService:
     """Get pipeline service instance."""
     global _pipeline_service
     if _pipeline_service is None:
-        _pipeline_service = PipelineService()
+        # Inject the shared progress service into pipeline service
+        progress_service = get_progress_service()
+        _pipeline_service = PipelineService(progress_service=progress_service)
     return _pipeline_service
 
 def get_agent_service() -> AgentService:

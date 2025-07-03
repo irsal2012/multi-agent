@@ -24,14 +24,117 @@ def get_api_client():
     """Get API client instance."""
     return APIClient()
 
+# Add cache clearing button in sidebar for debugging
+if st.sidebar.button("🔄 Clear Cache", help="Clear API client cache if experiencing issues"):
+    st.cache_resource.clear()
+    st.rerun()
+
 api_client = get_api_client()
 
 def check_backend_connection():
-    """Check if backend is available."""
-    if not api_client.health_check():
-        st.error("❌ **Backend not available**")
-        st.info("Please ensure the FastAPI backend is running on http://localhost:8000")
-        st.code("cd backend && python main.py")
+    """Check if backend is available with detailed diagnostics."""
+    with st.spinner("Checking backend connection..."):
+        # Try to get detailed health status, fallback to basic health check
+        try:
+            health_status = api_client.get_detailed_health_status()
+        except AttributeError:
+            # Fallback if method doesn't exist (cache issue)
+            st.warning("Using fallback health check method")
+            if api_client.health_check():
+                health_status = {"status": "healthy", "ready": True}
+            else:
+                health_status = {"status": "unreachable", "ready": False, "error": "Connection failed"}
+        
+        if health_status.get('ready', False):
+            # Backend is healthy and ready
+            return True
+        
+        # Backend is not ready or unreachable
+        st.error("❌ **Backend Connection Issue**")
+        
+        status = health_status.get('status', 'unknown')
+        error = health_status.get('error', 'Unknown error')
+        
+        if status == 'unreachable':
+            st.error(f"**Cannot reach backend:** {error}")
+            st.info("**Troubleshooting Steps:**")
+            st.markdown("""
+            1. **Check if backend is running:**
+               ```bash
+               cd backend && python main.py
+               ```
+            2. **Verify backend is accessible:**
+               - Open http://localhost:8000 in your browser
+               - You should see the API welcome message
+            3. **Check for port conflicts:**
+               - Make sure no other service is using port 8000
+            4. **Firewall/Network issues:**
+               - Ensure localhost connections are allowed
+            """)
+            
+        elif status == 'unhealthy':
+            st.error(f"**Backend is running but unhealthy:** {error}")
+            st.info("**Backend Status Details:**")
+            
+            # Show service status if available
+            services = health_status.get('services', {})
+            if services:
+                for service_name, service_status in services.items():
+                    if 'error' in str(service_status):
+                        st.error(f"❌ {service_name}: {service_status}")
+                    else:
+                        st.success(f"✅ {service_name}: {service_status}")
+            
+            st.info("**Possible Solutions:**")
+            st.markdown("""
+            - Restart the backend server
+            - Check backend logs for detailed error messages
+            - Ensure all dependencies are installed
+            """)
+            
+        else:
+            st.warning(f"**Backend status unclear:** {status}")
+            if error:
+                st.error(f"Error details: {error}")
+        
+        # Add connection test button
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("🔄 Retry Connection", key="retry_connection"):
+                st.rerun()
+        
+        with col2:
+            if st.button("🔍 Show Advanced Diagnostics", key="show_diagnostics"):
+                st.session_state.show_diagnostics = True
+        
+        # Show advanced diagnostics if requested
+        if st.session_state.get('show_diagnostics', False):
+            st.subheader("🔍 Advanced Diagnostics")
+            
+            # Test basic connectivity
+            st.write("**Testing connectivity to backend...**")
+            try:
+                import requests
+                response = requests.get("http://localhost:8000", timeout=5)
+                st.success(f"✅ Basic HTTP connection successful (Status: {response.status_code})")
+            except Exception as e:
+                st.error(f"❌ Basic HTTP connection failed: {str(e)}")
+            
+            # Show full health status
+            st.write("**Full Health Status Response:**")
+            st.json(health_status)
+            
+            # Show backend URL being used
+            st.write(f"**Backend URL:** {api_client.base_url}")
+            
+            # Connection settings
+            st.write("**Connection Settings:**")
+            st.code(f"""
+Base URL: {api_client.base_url}
+Connect Timeout: 10.0 seconds
+Read Timeout: 30.0 seconds
+            """)
+        
         st.stop()
 
 def main():

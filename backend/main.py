@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 import logging
+from datetime import datetime
 from contextlib import asynccontextmanager
 
 from api.routes import pipeline, agents, progress, projects
@@ -33,10 +34,28 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8501", "http://127.0.0.1:8501"],  # Streamlit default ports
+    allow_origins=[
+        "http://localhost:8501", 
+        "http://127.0.0.1:8501",
+        "http://localhost:3000",  # React dev server
+        "http://127.0.0.1:3000",
+        "http://0.0.0.0:8501",    # Docker/container access
+        "*"  # Allow all origins for development
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language",
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Origin",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers",
+    ],
+    expose_headers=["*"],
 )
 
 # Include routers
@@ -57,11 +76,71 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "service": "multi-agent-framework-backend"
-    }
+    """Enhanced health check endpoint with service validation."""
+    try:
+        from api.dependencies import get_pipeline_service, get_progress_service, get_agent_service, get_project_service
+        
+        # Test service initialization
+        services_status = {}
+        overall_healthy = True
+        
+        # Check pipeline service
+        try:
+            pipeline_service = get_pipeline_service()
+            # Test basic functionality
+            test_validation = await pipeline_service.validate_input("test input")
+            services_status["pipeline_service"] = "healthy"
+        except Exception as e:
+            services_status["pipeline_service"] = f"error: {str(e)}"
+            overall_healthy = False
+        
+        # Check progress service
+        try:
+            progress_service = get_progress_service()
+            # Test basic functionality
+            test_stats = progress_service.get_statistics()
+            services_status["progress_service"] = "healthy"
+        except Exception as e:
+            services_status["progress_service"] = f"error: {str(e)}"
+            overall_healthy = False
+        
+        # Check agent service
+        try:
+            agent_service = get_agent_service()
+            # Test basic functionality
+            agent_info = await agent_service.get_agents_info()
+            services_status["agent_service"] = "healthy"
+        except Exception as e:
+            services_status["agent_service"] = f"error: {str(e)}"
+            overall_healthy = False
+        
+        # Check project service
+        try:
+            project_service = get_project_service()
+            # Test basic functionality
+            stats = await project_service.get_statistics()
+            services_status["project_service"] = "healthy"
+        except Exception as e:
+            services_status["project_service"] = f"error: {str(e)}"
+            overall_healthy = False
+        
+        return {
+            "status": "healthy" if overall_healthy else "degraded",
+            "service": "multi-agent-framework-backend",
+            "services": services_status,
+            "timestamp": datetime.now().isoformat(),
+            "ready": overall_healthy
+        }
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return {
+            "status": "unhealthy",
+            "service": "multi-agent-framework-backend",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat(),
+            "ready": False
+        }
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):

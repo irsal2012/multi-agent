@@ -228,3 +228,7 @@ class ProjectService:
     def get_all_project_ids(self) -> List[str]:
         """Get all stored project IDs."""
         return list(self.project_results.keys())
+    
+    async def get_statistics(self) -> Dict[str, Any]:
+        """Get project statistics (alias for get_project_statistics for health check)."""
+        return await self.get_project_statistics()

@@ -227,3 +227,22 @@ class ProgressService:
             'completed_steps': progress['completed_steps'],
             'total_steps': progress['total_steps']
         }
+    
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get overall progress service statistics."""
+        total_projects = len(self.project_progress)
+        completed_projects = sum(1 for p in self.project_progress.values() 
+                               if p['current_progress']['is_completed'])
+        failed_projects = sum(1 for p in self.project_progress.values() 
+                            if p['current_progress']['has_failures'])
+        running_projects = sum(1 for p in self.project_progress.values() 
+                             if p['current_progress']['is_running'])
+        
+        return {
+            'total_projects': total_projects,
+            'completed_projects': completed_projects,
+            'failed_projects': failed_projects,
+            'running_projects': running_projects,
+            'success_rate': (completed_projects / total_projects * 100) if total_projects > 0 else 0,
+            'stored_results': len(self.project_results)
+        }
