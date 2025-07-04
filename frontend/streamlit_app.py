@@ -373,9 +373,47 @@ def show_generation_progress(project_id: str):
     
     st.subheader("🚀 Generation in Progress")
     
+    # IMMEDIATE COMPLETION CHECK - Check if project is already completed before any polling
+    status_text = st.empty()
+    status_text.info("🔍 **Checking project status...**")
+    
+    completion_status = api_client.check_project_completion_fallback(project_id)
+    
+    if completion_status and completion_status.get('is_completed'):
+        # Project is already completed! Show results immediately
+        st.success("✅ **Project Already Completed!**")
+        
+        # Create progress interface for display
+        progress_bar = st.progress(1.0)
+        
+        # Show pipeline steps as completed
+        st.markdown("### 📋 Pipeline Steps")
+        step_names = [
+            "Requirements Analysis",
+            "Code Generation", 
+            "Code Review",
+            "Documentation",
+            "Test Generation",
+            "Deployment Config",
+            "UI Generation"
+        ]
+        
+        for i, step_name in enumerate(step_names):
+            st.success(f"✅ **{i+1}. {step_name}** - Completed")
+        
+        # Display the results immediately
+        result = completion_status.get('result')
+        if result:
+            st.success("🎉 Project completed! Displaying results immediately.")
+            display_results(result, use_expanders=False)
+            return
+        else:
+            st.warning("Project completed but results are being processed. Please check Project History.")
+            return
+    
+    # If not completed, proceed with normal progress tracking
     # Create progress interface
     progress_bar = st.progress(0)
-    status_text = st.empty()
     debug_info = st.empty()
     
     # Show pipeline steps
@@ -405,29 +443,6 @@ def show_generation_progress(project_id: str):
                 return
             else:
                 st.error("Failed to cancel generation")
-    
-    # IMMEDIATE COMPLETION CHECK - Check if project is already completed before polling
-    status_text.info("🔍 **Checking project status...**")
-    completion_status = api_client.check_project_completion_fallback(project_id)
-    
-    if completion_status and completion_status.get('is_completed'):
-        # Project is already completed! Show results immediately
-        status_text.success("✅ **Project Already Completed!**")
-        progress_bar.progress(1.0)
-        
-        # Update all steps to completed
-        for i, step_name in enumerate(step_names):
-            step_placeholders[i].success(f"✅ **{i+1}. {step_name}** - Completed")
-        
-        # Display the results immediately
-        result = completion_status.get('result')
-        if result:
-            st.success("🎉 Project completed! Displaying results immediately.")
-            display_results(result)
-            return
-        else:
-            st.warning("Project completed but results are being processed. Please check Project History.")
-            return
     
     # Enhanced poll for progress updates with smart completion detection
     max_polls = 30  # Reduced to 30 attempts (30 seconds) before checking completion fallback
@@ -700,13 +715,30 @@ def show_generation_progress(project_id: str):
         except:
             st.info("You can check the Project History page to see if your generation completed successfully.")
 
-def display_results(results: Dict[str, Any]):
+def display_results(results: Dict[str, Any], use_expanders: bool = True):
     """Display the generated application results."""
     
     st.success("🎉 Your application has been generated successfully!")
     
     # Project metadata
-    with st.expander("📊 Project Information", expanded=True):
+    if use_expanders:
+        with st.expander("📊 Project Information", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Project Name", results.get('project_name', 'Unknown'))
+            
+            with col2:
+                metadata = results.get('pipeline_metadata', {})
+                execution_time = metadata.get('execution_time_seconds', 0)
+                st.metric("Generation Time", f"{execution_time:.1f}s")
+            
+            with col3:
+                progress = results.get('progress', {})
+                progress_pct = progress.get('progress_percentage', 0)
+                st.metric("Completion", f"{progress_pct:.0f}%")
+    else:
+        st.subheader("📊 Project Information")
         col1, col2, col3 = st.columns(3)
         
         with col1:
