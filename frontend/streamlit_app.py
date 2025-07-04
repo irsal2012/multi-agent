@@ -406,13 +406,37 @@ def show_generation_progress(project_id: str):
             else:
                 st.error("Failed to cancel generation")
     
-    # Enhanced poll for progress updates with UI generation handling
-    max_polls = 600  # 10 minutes with 1-second intervals (increased for UI generation)
+    # IMMEDIATE COMPLETION CHECK - Check if project is already completed before polling
+    status_text.info("🔍 **Checking project status...**")
+    completion_status = api_client.check_project_completion_fallback(project_id)
+    
+    if completion_status and completion_status.get('is_completed'):
+        # Project is already completed! Show results immediately
+        status_text.success("✅ **Project Already Completed!**")
+        progress_bar.progress(1.0)
+        
+        # Update all steps to completed
+        for i, step_name in enumerate(step_names):
+            step_placeholders[i].success(f"✅ **{i+1}. {step_name}** - Completed")
+        
+        # Display the results immediately
+        result = completion_status.get('result')
+        if result:
+            st.success("🎉 Project completed! Displaying results immediately.")
+            display_results(result)
+            return
+        else:
+            st.warning("Project completed but results are being processed. Please check Project History.")
+            return
+    
+    # Enhanced poll for progress updates with smart completion detection
+    max_polls = 30  # Reduced to 30 attempts (30 seconds) before checking completion fallback
     poll_count = 0
     consecutive_errors = 0
     last_progress_percentage = 0
     ui_generation_detected = False
     extended_timeout_used = False
+    completion_checked = False
     
     while poll_count < max_polls:
         try:
@@ -576,11 +600,49 @@ def show_generation_progress(project_id: str):
                 time.sleep(2)  # Standard pause for other errors
             poll_count += 1
     
-    # Handle timeout
+    # Handle timeout or completion check
     if poll_count >= max_polls:
-        st.warning("⏰ Progress polling timed out. The generation may still be running in the background.")
+        status_text.info("🔍 **Checking if project completed...**")
+        
+        # Smart completion detection - check if project actually completed
+        completion_status = api_client.check_project_completion_fallback(project_id)
+        
+        if completion_status and completion_status.get('is_completed'):
+            # Project is completed! Show success and results
+            status_text.success("✅ **Project Completed Successfully!**")
+            progress_bar.progress(1.0)
+            
+            # Update all steps to completed
+            for i, step_name in enumerate(step_names):
+                step_placeholders[i].success(f"✅ **{i+1}. {step_name}** - Completed")
+            
+            # Display the results
+            result = completion_status.get('result')
+            if result:
+                st.success("🎉 Project completed! Results found via smart detection.")
+                display_results(result)
+                return
+            else:
+                st.warning("Project completed but results are being processed. Please check Project History.")
+                return
+        else:
+            # No completion detected, show timeout message
+            st.warning("⏰ Progress polling timed out. Checking for completion...")
+            
+            # Try one more time to get results directly
+            try:
+                result = api_client.get_project_result(project_id)
+                if result:
+                    st.success("🎉 Project found completed! Displaying results.")
+                    display_results(result)
+                    return
+            except:
+                pass
+            
+            st.info("Generation may still be in progress. Please wait a moment and refresh the page.")
+            return
     
-    # Check final result
+    # Check final result (normal completion path)
     try:
         result = api_client.get_project_result(project_id)
         if result:
@@ -594,12 +656,49 @@ def show_generation_progress(project_id: str):
                 elif final_progress and final_progress.get('has_failures'):
                     st.error("Generation failed. Check the logs above for details.")
                 else:
-                    st.info("Generation may still be in progress. Please wait a moment and refresh the page.")
+                    # Use smart completion detection as fallback
+                    completion_status = api_client.check_project_completion_fallback(project_id)
+                    if completion_status and completion_status.get('is_completed'):
+                        st.success("🎉 Project completed! Found via smart detection.")
+                        result = completion_status.get('result')
+                        if result:
+                            display_results(result)
+                        else:
+                            st.info("Project completed. Please check Project History for results.")
+                    else:
+                        st.info("Generation may still be in progress. Please wait a moment and refresh the page.")
             except:
-                st.warning("Generation status unclear. Please check the Project History page for updates.")
+                # Final fallback - try smart completion detection
+                try:
+                    completion_status = api_client.check_project_completion_fallback(project_id)
+                    if completion_status and completion_status.get('is_completed'):
+                        st.success("🎉 Project completed! Found via smart detection.")
+                        result = completion_status.get('result')
+                        if result:
+                            display_results(result)
+                        else:
+                            st.info("Project completed. Please check Project History for results.")
+                    else:
+                        st.warning("Generation status unclear. Please check the Project History page for updates.")
+                except:
+                    st.warning("Generation status unclear. Please check the Project History page for updates.")
     except Exception as e:
         st.error(f"Failed to get final results: {str(e)}")
-        st.info("You can check the Project History page to see if your generation completed successfully.")
+        
+        # Try smart completion detection as final fallback
+        try:
+            completion_status = api_client.check_project_completion_fallback(project_id)
+            if completion_status and completion_status.get('is_completed'):
+                st.success("🎉 Project completed! Found via smart detection.")
+                result = completion_status.get('result')
+                if result:
+                    display_results(result)
+                else:
+                    st.info("Project completed. Please check Project History for results.")
+            else:
+                st.info("You can check the Project History page to see if your generation completed successfully.")
+        except:
+            st.info("You can check the Project History page to see if your generation completed successfully.")
 
 def display_results(results: Dict[str, Any]):
     """Display the generated application results."""

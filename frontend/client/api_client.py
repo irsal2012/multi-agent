@@ -316,3 +316,31 @@ class APIClient:
             self.logger.error(f"Failed to test progress tracking: {str(e)}")
             st.error(f"Progress tracking test failed: {str(e)}")
             return None
+    
+    def check_project_completion_fallback(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Check if project is completed by looking for results when progress is unavailable."""
+        try:
+            with self._get_client() as client:
+                # Try to get project result
+                response = client.get(f"/api/v1/pipeline/result/{project_id}")
+                if response.status_code == 200:
+                    result = response.json()
+                    self.logger.info(f"Found completed project result for {project_id}")
+                    return {
+                        'is_completed': True,
+                        'has_result': True,
+                        'result': result
+                    }
+                elif response.status_code == 404:
+                    # No result found, project might not exist or failed
+                    return {
+                        'is_completed': False,
+                        'has_result': False,
+                        'result': None
+                    }
+                else:
+                    # Other error
+                    return None
+        except Exception as e:
+            self.logger.error(f"Failed to check project completion fallback: {str(e)}")
+            return None

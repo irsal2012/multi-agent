@@ -1,6 +1,6 @@
 import streamlit as st
 
-st.title("weather-app")
+st.title("test-2")
 st.write("Welcome to your generated application!")
 
 # Add your Streamlit UI components here

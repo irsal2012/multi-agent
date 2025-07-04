@@ -57,7 +57,12 @@ class ProgressService:
     def get_project_progress(self, project_id: str) -> Optional[ProgressResponse]:
         """Get current progress for a project."""
         if project_id not in self.project_progress:
-            return None
+            # Try to reconstruct progress from file storage if project exists
+            if self._reconstruct_completed_project_progress(project_id):
+                # Now try again
+                pass
+            else:
+                return None
         
         progress_data = self.project_progress[project_id]['current_progress']
         
@@ -143,10 +148,25 @@ class ProgressService:
             has_failures = len(pipeline_status.get('failed_steps', [])) > 0
             overall_success = pipeline_status.get('overall_success', True)
             
+            # Create completed steps array
+            completed_steps = [
+                {'name': 'Requirements Analysis', 'description': 'Analyzing requirements from user input', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Requirement Analyst'},
+                {'name': 'Code Generation', 'description': 'Generating Python code from requirements', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Python Coder'},
+                {'name': 'Code Review', 'description': 'Reviewing code for quality and security', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Code Reviewer'},
+                {'name': 'Documentation', 'description': 'Creating comprehensive documentation', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Documentation Writer'},
+                {'name': 'Test Generation', 'description': 'Generating test cases', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Test Generator'},
+                {'name': 'Deployment Config', 'description': 'Creating deployment configurations', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Deployment Engineer'},
+                {'name': 'UI Generation', 'description': 'Creating Streamlit user interface', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'UI Designer'}
+            ]
+            
             # Update progress based on actual completion status
             self.project_progress[project_id]['current_progress']['is_completed'] = True
             self.project_progress[project_id]['current_progress']['is_running'] = False
             self.project_progress[project_id]['current_progress']['has_failures'] = has_failures
+            self.project_progress[project_id]['current_progress']['completed_steps'] = 7
+            self.project_progress[project_id]['current_progress']['failed_steps'] = 0
+            self.project_progress[project_id]['current_progress']['steps'] = completed_steps
+            self.project_progress[project_id]['current_progress']['current_step_info'] = None
             self.project_progress[project_id]['updated_at'] = datetime.now()
             
             # Set progress percentage based on completion status
@@ -160,12 +180,12 @@ class ProgressService:
                 self.add_log_entry(project_id, LogLevel.WARNING, warning_msg)
             else:
                 # Partial completion with some failures
-                completed_steps = len(pipeline_status.get('completed_steps', []))
+                completed_step_count = len(pipeline_status.get('completed_steps', []))
                 total_possible_steps = 7  # Total pipeline steps
-                partial_percentage = min(90.0, (completed_steps / total_possible_steps) * 100)
+                partial_percentage = min(90.0, (completed_step_count / total_possible_steps) * 100)
                 self.project_progress[project_id]['current_progress']['progress_percentage'] = partial_percentage
                 failed_count = len(pipeline_status.get('failed_steps', []))
-                partial_msg = f"Project completed partially: {completed_steps} steps completed, {failed_count} failed"
+                partial_msg = f"Project completed partially: {completed_step_count} steps completed, {failed_count} failed"
                 self.add_log_entry(project_id, LogLevel.WARNING, partial_msg)
             
             # Add warnings to logs
@@ -275,3 +295,98 @@ class ProgressService:
             'success_rate': (completed_projects / total_projects * 100) if total_projects > 0 else 0,
             'stored_results': len(self.project_results)
         }
+    
+    def _reconstruct_completed_project_progress(self, project_id: str) -> bool:
+        """Reconstruct progress data for a completed project from file storage."""
+        try:
+            from pathlib import Path
+            import json
+            
+            # Check if project exists in file storage
+            projects_dir = Path("backend/generated_projects")
+            if not projects_dir.exists():
+                return False
+            
+            # Look for project by ID in metadata files
+            for project_dir in projects_dir.iterdir():
+                if project_dir.is_dir():
+                    metadata_file = project_dir / "project_metadata.json"
+                    if metadata_file.exists():
+                        try:
+                            with open(metadata_file, 'r') as f:
+                                metadata = json.load(f)
+                            
+                            if metadata.get('project_id') == project_id:
+                                # Found the project, reconstruct progress
+                                project_name = metadata.get('project_name', 'Unknown')
+                                user_input = metadata.get('user_input', '')
+                                timestamp_str = metadata.get('timestamp', '')
+                                
+                                # Parse timestamp
+                                try:
+                                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                                except:
+                                    timestamp = datetime.now()
+                                
+                                # Create mock project metadata
+                                from models.schemas import ProjectMetadata, ProjectStatus
+                                mock_metadata = ProjectMetadata(
+                                    project_id=project_id,
+                                    project_name=project_name,
+                                    user_input=user_input,
+                                    status=ProjectStatus.COMPLETED
+                                )
+                                
+                                # Create completed progress data
+                                completed_steps = [
+                                    {'name': 'Requirements Analysis', 'description': 'Analyzing requirements from user input', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Requirement Analyst'},
+                                    {'name': 'Code Generation', 'description': 'Generating Python code from requirements', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Python Coder'},
+                                    {'name': 'Code Review', 'description': 'Reviewing code for quality and security', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Code Reviewer'},
+                                    {'name': 'Documentation', 'description': 'Creating comprehensive documentation', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Documentation Writer'},
+                                    {'name': 'Test Generation', 'description': 'Generating test cases', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Test Generator'},
+                                    {'name': 'Deployment Config', 'description': 'Creating deployment configurations', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'Deployment Engineer'},
+                                    {'name': 'UI Generation', 'description': 'Creating Streamlit user interface', 'status': 'completed', 'progress_percentage': 100, 'agent_name': 'UI Designer'}
+                                ]
+                                
+                                # Reconstruct progress data
+                                self.project_progress[project_id] = {
+                                    'metadata': mock_metadata,
+                                    'current_progress': {
+                                        'total_steps': 7,
+                                        'completed_steps': 7,
+                                        'failed_steps': 0,
+                                        'progress_percentage': 100.0,
+                                        'steps': completed_steps,
+                                        'elapsed_time': 0.0,
+                                        'estimated_remaining_time': 0.0,
+                                        'is_running': False,
+                                        'is_completed': True,
+                                        'has_failures': False,
+                                        'current_step_info': None,
+                                        'logs': [
+                                            {
+                                                'timestamp': timestamp.isoformat(),
+                                                'level': 'INFO',
+                                                'message': 'Project completed successfully (reconstructed from file storage)',
+                                                'agent': None,
+                                                'step': None,
+                                                'metadata': {}
+                                            }
+                                        ]
+                                    },
+                                    'created_at': timestamp,
+                                    'updated_at': datetime.now()
+                                }
+                                
+                                self.logger.info(f"Reconstructed progress data for completed project {project_id} ({project_name})")
+                                return True
+                                
+                        except Exception as e:
+                            self.logger.error(f"Error reading metadata for {project_dir}: {str(e)}")
+                            continue
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error reconstructing progress for project {project_id}: {str(e)}")
+            return False

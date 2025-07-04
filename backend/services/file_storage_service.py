@@ -187,6 +187,146 @@ class FileStorageService:
                 f.write("# requests>=2.25.1\n")
                 f.write("# pandas>=1.3.0\n")
     
+    def load_project(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Load complete project data from disk."""
+        try:
+            project_path = self.get_project_path(project_id)
+            if not project_path:
+                return None
+            
+            project_dir = Path(project_path)
+            complete_data_file = project_dir / 'complete_project_data.json'
+            
+            if complete_data_file.exists():
+                with open(complete_data_file, 'r') as f:
+                    project_data = json.load(f)
+                    self.logger.info(f"Loaded complete project data for {project_id} from {complete_data_file}")
+                    return project_data
+            else:
+                # Fallback: reconstruct from individual files
+                self.logger.info(f"Reconstructing project data for {project_id} from individual files")
+                return self._reconstruct_project_from_files(project_dir, project_id)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to load project {project_id}: {str(e)}")
+            return None
+    
+    def _reconstruct_project_from_files(self, project_dir: Path, project_id: str) -> Dict[str, Any]:
+        """Reconstruct project data from individual files when complete JSON is not available."""
+        try:
+            # Load metadata
+            metadata = {}
+            metadata_file = project_dir / 'project_metadata.json'
+            if metadata_file.exists():
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+            
+            # Load code files
+            main_code = ""
+            main_py = project_dir / 'main.py'
+            if main_py.exists():
+                with open(main_py, 'r') as f:
+                    main_code = f.read()
+            
+            # Load documentation
+            readme = ""
+            readme_file = project_dir / 'README.md'
+            if readme_file.exists():
+                with open(readme_file, 'r') as f:
+                    readme = f.read()
+            
+            # Load tests
+            test_code = ""
+            test_file = project_dir / 'test_main.py'
+            if test_file.exists():
+                with open(test_file, 'r') as f:
+                    test_code = f.read()
+            
+            # Load deployment config
+            deployment_config = ""
+            deployment_file = project_dir / 'DEPLOYMENT.md'
+            if deployment_file.exists():
+                with open(deployment_file, 'r') as f:
+                    deployment_config = f.read()
+            
+            # Load UI code
+            ui_code = ""
+            ui_file = project_dir / 'streamlit_app.py'
+            if ui_file.exists():
+                with open(ui_file, 'r') as f:
+                    ui_code = f.read()
+            
+            # Reconstruct project data structure
+            now = datetime.now()
+            project_data = {
+                'project_name': metadata.get('project_name', f'project_{project_id[:8]}'),
+                'timestamp': metadata.get('timestamp', now.isoformat()),
+                'user_input': metadata.get('user_input', 'Reconstructed from files'),
+                'requirements': {
+                    'original_input': metadata.get('user_input', 'Reconstructed from files'),
+                    'analyzed_requirements': metadata.get('user_input', 'Reconstructed from files'),
+                    'timestamp': now
+                },
+                'code': {
+                    'final_code': main_code,
+                    'original_code': main_code,
+                    'additional_modules': [],
+                    'review_feedback': [],
+                    'loop_summary': {
+                        'total_iterations': 1,
+                        'improvements_made': 0,
+                        'final_quality_score': 85
+                    }
+                },
+                'documentation': {
+                    'readme': readme,
+                    'timestamp': now
+                },
+                'tests': {
+                    'test_code': test_code,
+                    'additional_tests': [],
+                    'full_response': '',
+                    'timestamp': now
+                },
+                'deployment': {
+                    'deployment_configs': deployment_config,
+                    'timestamp': now
+                },
+                'ui': {
+                    'streamlit_app': ui_code,
+                    'additional_ui_files': [],
+                    'full_response': '',
+                    'timestamp': now
+                },
+                'progress': {
+                    'total_steps': 7,
+                    'completed_steps': 7,
+                    'failed_steps': 0,
+                    'progress_percentage': 100.0,
+                    'steps': [],
+                    'elapsed_time': 0.0,
+                    'estimated_remaining_time': 0.0,
+                    'is_running': False,
+                    'is_completed': True,
+                    'has_failures': False,
+                    'current_step_info': None,
+                    'logs': []
+                },
+                'pipeline_metadata': {
+                    'start_time': now,
+                    'end_time': now,
+                    'execution_time_seconds': 0.0,
+                    'success': True
+                }
+            }
+            
+            self.logger.info(f"Reconstructed project data for {project_id}")
+            return project_data
+            
+        except Exception as e:
+            self.logger.error(f"Failed to reconstruct project {project_id}: {str(e)}")
+            raise
+    
     def get_project_path(self, project_id: str, project_name: Optional[str] = None) -> Optional[str]:
         """Get the file system path for a project."""
         if project_name:

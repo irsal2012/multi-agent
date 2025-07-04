@@ -373,7 +373,22 @@ class PipelineService:
     
     async def get_project_result(self, project_id: str) -> Optional[ProjectResult]:
         """Get complete project result by ID."""
-        return self.progress_service.get_project_result(project_id)
+        # First try to get from progress service (in-memory)
+        result = self.progress_service.get_project_result(project_id)
+        
+        if result:
+            return result
+        
+        # If not found in progress service, try to load from file storage
+        try:
+            file_result = self.file_storage.load_project(project_id)
+            if file_result:
+                self.logger.info(f"Loaded project result for {project_id} from file storage")
+                return file_result
+        except Exception as e:
+            self.logger.error(f"Failed to load project {project_id} from file storage: {str(e)}")
+        
+        return None
     
     async def cancel_project(self, project_id: str) -> bool:
         """Cancel a running project."""

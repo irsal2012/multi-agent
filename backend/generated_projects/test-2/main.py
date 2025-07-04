@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Custom Utility Application
-Generated based on requirements: {'agent': 'Requirement Analyst', 'input_processed': True, 'validation': {'is_valid': True, 'warnings': [], 'suggestions': ["Consider including more specific requirements using words like 'need', 'should', 'must', etc.", "Try to be more specific than terms like 'good', 'fast', 'easy' - provide measurable criteria"]}, 'context': {}, 'agent_instance': 'requirement_analyst', 'requirements_structure': {'functional_requirements': [], 'non_functional_requirements': [], 'constraints': [], 'assumptions': [], 'edge_cases': [], 'questions': [], 'acceptance_criteria': []}}
+Generated based on requirements: {'agent': 'Requirement Analyst', 'input_processed': True, 'validation': {'is_valid': True, 'warnings': [], 'suggestions': ["Consider including more specific requirements using words like 'need', 'should', 'must', etc."]}, 'context': {}, 'agent_instance': 'requirement_analyst', 'requirements_structure': {'functional_requirements': [], 'non_functional_requirements': [], 'constraints': [], 'assumptions': [], 'edge_cases': [], 'questions': [], 'acceptance_criteria': []}}
 """
 
 import logging
@@ -18,7 +18,7 @@ class CustomUtility:
     def __init__(self):
         """Initialize the utility."""
         logger.info("Custom utility initialized")
-        self.requirements = """{'agent': 'Requirement Analyst', 'input_processed': True, 'validation': {'is_valid': True, 'warnings': [], 'suggestions': ["Consider including more specific requirements using words like 'need', 'should', 'must', etc.", "Try to be more specific than terms like 'good', 'fast', 'easy' - provide measurable criteria"]}, 'context': {}, 'agent_instance': 'requirement_analyst', 'requirements_structure': {'functional_requirements': [], 'non_functional_requirements': [], 'constraints': [], 'assumptions': [], 'edge_cases': [], 'questions': [], 'acceptance_criteria': []}}"""
+        self.requirements = """{'agent': 'Requirement Analyst', 'input_processed': True, 'validation': {'is_valid': True, 'warnings': [], 'suggestions': ["Consider including more specific requirements using words like 'need', 'should', 'must', etc."]}, 'context': {}, 'agent_instance': 'requirement_analyst', 'requirements_structure': {'functional_requirements': [], 'non_functional_requirements': [], 'constraints': [], 'assumptions': [], 'edge_cases': [], 'questions': [], 'acceptance_criteria': []}}"""
     
     def process(self, input_data: Any) -> Dict[str, Any]:
         """Process input data according to requirements.
