@@ -405,15 +405,31 @@ def show_generation_progress(project_id: str):
             else:
                 st.error("Failed to cancel generation")
     
-    # Poll for progress updates with improved error handling
-    max_polls = 300  # 5 minutes with 1-second intervals
+    # Enhanced poll for progress updates with UI generation handling
+    max_polls = 600  # 10 minutes with 1-second intervals (increased for UI generation)
     poll_count = 0
     consecutive_errors = 0
     last_progress_percentage = 0
+    ui_generation_detected = False
+    extended_timeout_used = False
     
     while poll_count < max_polls:
         try:
-            progress = api_client.get_project_progress(project_id)
+            # Detect if we're in UI generation phase and use extended timeout
+            current_step = None
+            if poll_count > 0:  # Skip first poll to establish baseline
+                try:
+                    # Check if we're in UI generation step (step 7)
+                    if last_progress_percentage > 85:  # Likely in UI generation phase
+                        if not ui_generation_detected:
+                            ui_generation_detected = True
+                            status_text.info("🎨 **Entering UI Generation Phase** - This may take longer...")
+                        extended_timeout_used = True
+                except:
+                    pass
+            
+            # Get progress with appropriate timeout
+            progress = api_client.get_project_progress(project_id, extended_timeout=extended_timeout_used)
             
             if progress:
                 consecutive_errors = 0  # Reset error counter on success
@@ -433,7 +449,10 @@ def show_generation_progress(project_id: str):
                         'has_failures': progress.get('has_failures', False),
                         'completed_steps': progress.get('completed_steps', 0),
                         'total_steps': progress.get('total_steps', 0),
-                        'poll_count': poll_count
+                        'poll_count': poll_count,
+                        'ui_generation_detected': ui_generation_detected,
+                        'extended_timeout_used': extended_timeout_used,
+                        'consecutive_errors': consecutive_errors
                     })
                 
                 # Update status text
@@ -453,12 +472,23 @@ def show_generation_progress(project_id: str):
                     if current_step_info:
                         step_desc = current_step_info.get('description', 'Processing...')
                         agent_name = current_step_info.get('agent_name', '')
-                        if agent_name:
+                        
+                        # Special handling for UI generation
+                        if agent_name == 'ui_designer' or 'UI' in step_desc:
+                            if not ui_generation_detected:
+                                ui_generation_detected = True
+                                status_text.info("🎨 **Starting UI Generation** - This step may take longer due to AI processing...")
+                            else:
+                                status_text.info(f"🎨 **{step_desc}** - AI is generating your interface...")
+                        elif agent_name:
                             status_text.info(f"🔄 **{step_desc}** (Agent: {agent_name})")
                         else:
                             status_text.info(f"🔄 **{step_desc}**")
                     else:
-                        status_text.info(f"🔄 **Processing...** ({progress_percentage:.1f}% complete)")
+                        if ui_generation_detected:
+                            status_text.info(f"🎨 **UI Generation in Progress...** ({progress_percentage:.1f}% complete)")
+                        else:
+                            status_text.info(f"🔄 **Processing...** ({progress_percentage:.1f}% complete)")
                 else:
                     status_text.info(f"⏳ **Initializing...** ({progress_percentage:.1f}% complete)")
                 
@@ -471,7 +501,11 @@ def show_generation_progress(project_id: str):
                         step_progress = step.get('progress_percentage', 0)
                         
                         if status == 'running':
-                            step_placeholders[i].info(f"🔄 **{i+1}. {step_name}** - Running ({step_progress:.0f}%)")
+                            # Special display for UI generation
+                            if i == 6:  # UI Generation step
+                                step_placeholders[i].info(f"🎨 **{i+1}. {step_name}** - AI Processing ({step_progress:.0f}%)")
+                            else:
+                                step_placeholders[i].info(f"🔄 **{i+1}. {step_name}** - Running ({step_progress:.0f}%)")
                         elif status == 'completed':
                             step_placeholders[i].success(f"✅ **{i+1}. {step_name}** - Completed")
                         elif status == 'failed':
@@ -490,14 +524,27 @@ def show_generation_progress(project_id: str):
                     # Don't show warnings for the first few attempts
                     pass
                 elif consecutive_errors <= 8:
-                    status_text.warning(f"⚠️ Waiting for progress data... (attempt {consecutive_errors})")
-                elif consecutive_errors <= 15:
-                    status_text.warning(f"⚠️ No progress data received for {consecutive_errors} consecutive attempts. Pipeline may still be initializing...")
+                    if ui_generation_detected:
+                        status_text.warning(f"⚠️ UI Generation in progress, waiting for response... (attempt {consecutive_errors})")
+                    else:
+                        status_text.warning(f"⚠️ Waiting for progress data... (attempt {consecutive_errors})")
+                elif consecutive_errors <= 20:  # Increased tolerance for UI generation
+                    if ui_generation_detected:
+                        status_text.warning(f"⚠️ UI Generation is taking longer than usual. AI processing can be intensive... (attempt {consecutive_errors})")
+                    else:
+                        status_text.warning(f"⚠️ No progress data received for {consecutive_errors} consecutive attempts. Pipeline may still be initializing...")
                 else:
                     status_text.error("❌ Lost connection to backend or pipeline failed to start. Please check if the backend is running.")
                     break
             
-            time.sleep(1)
+            # Adaptive sleep interval
+            if ui_generation_detected and consecutive_errors > 0:
+                time.sleep(3)  # Longer interval during UI generation with errors
+            elif ui_generation_detected:
+                time.sleep(2)  # Slightly longer interval during UI generation
+            else:
+                time.sleep(1)  # Normal interval
+            
             poll_count += 1
             
         except Exception as e:
@@ -506,16 +553,26 @@ def show_generation_progress(project_id: str):
             
             if consecutive_errors <= 3:
                 # Show temporary error message
-                status_text.warning(f"⚠️ Connection issue (attempt {consecutive_errors}/3): {error_msg}")
-            elif consecutive_errors <= 10:
+                if ui_generation_detected:
+                    status_text.warning(f"⚠️ UI Generation connection issue (attempt {consecutive_errors}/3): {error_msg}")
+                else:
+                    status_text.warning(f"⚠️ Connection issue (attempt {consecutive_errors}/3): {error_msg}")
+            elif consecutive_errors <= 15:  # Increased tolerance
                 # Show persistent warning
-                st.warning(f"⚠️ Persistent connection issues. Retrying... (attempt {consecutive_errors})")
+                if ui_generation_detected:
+                    st.warning(f"⚠️ UI Generation experiencing connection issues. This is normal for intensive AI processing... (attempt {consecutive_errors})")
+                else:
+                    st.warning(f"⚠️ Persistent connection issues. Retrying... (attempt {consecutive_errors})")
             else:
                 # Give up after too many errors
                 st.error(f"❌ Too many connection errors. Please check your backend connection: {error_msg}")
                 break
             
-            time.sleep(2)  # Wait longer between retries on error
+            # Longer wait on errors, especially during UI generation
+            if ui_generation_detected:
+                time.sleep(5)  # Longer pause during UI generation errors
+            else:
+                time.sleep(2)  # Standard pause for other errors
             poll_count += 1
     
     # Handle timeout

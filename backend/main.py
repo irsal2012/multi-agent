@@ -76,9 +76,16 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Enhanced health check endpoint with service validation."""
+    """Enhanced health check endpoint with service validation and resource monitoring."""
     try:
+        import psutil
+        import os
         from api.dependencies import get_pipeline_service, get_progress_service, get_agent_service, get_project_service
+        
+        # Get system resource information
+        memory_info = psutil.virtual_memory()
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        disk_usage = psutil.disk_usage('/')
         
         # Test service initialization
         services_status = {}
@@ -124,10 +131,48 @@ async def health_check():
             services_status["project_service"] = f"error: {str(e)}"
             overall_healthy = False
         
+        # Resource health checks
+        resource_warnings = []
+        if memory_info.percent > 85:
+            resource_warnings.append(f"High memory usage: {memory_info.percent:.1f}%")
+            if memory_info.percent > 95:
+                overall_healthy = False
+        
+        if cpu_percent > 90:
+            resource_warnings.append(f"High CPU usage: {cpu_percent:.1f}%")
+            if cpu_percent > 98:
+                overall_healthy = False
+        
+        if disk_usage.percent > 90:
+            resource_warnings.append(f"High disk usage: {disk_usage.percent:.1f}%")
+            if disk_usage.percent > 98:
+                overall_healthy = False
+        
         return {
             "status": "healthy" if overall_healthy else "degraded",
             "service": "multi-agent-framework-backend",
             "services": services_status,
+            "resources": {
+                "memory": {
+                    "total_gb": round(memory_info.total / (1024**3), 2),
+                    "available_gb": round(memory_info.available / (1024**3), 2),
+                    "used_percent": memory_info.percent
+                },
+                "cpu": {
+                    "usage_percent": cpu_percent,
+                    "count": psutil.cpu_count()
+                },
+                "disk": {
+                    "total_gb": round(disk_usage.total / (1024**3), 2),
+                    "free_gb": round(disk_usage.free / (1024**3), 2),
+                    "used_percent": disk_usage.percent
+                },
+                "process": {
+                    "pid": os.getpid(),
+                    "memory_mb": round(psutil.Process().memory_info().rss / (1024**2), 2)
+                }
+            },
+            "warnings": resource_warnings,
             "timestamp": datetime.now().isoformat(),
             "ready": overall_healthy
         }

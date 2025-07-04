@@ -17,11 +17,18 @@ class APIClient:
         self._connection_status = None
         self._last_health_check = 0
         
-    def _get_client(self) -> httpx.Client:
+    def _get_client(self, extended_timeout: bool = False) -> httpx.Client:
         """Get HTTP client with timeout configuration."""
+        if extended_timeout:
+            # Extended timeout for long-running operations like UI generation
+            timeout = httpx.Timeout(120.0, connect=15.0, read=120.0, write=30.0)
+        else:
+            # Standard timeout for regular operations
+            timeout = httpx.Timeout(30.0, connect=10.0, read=30.0, write=10.0)
+        
         return httpx.Client(
             base_url=self.base_url,
-            timeout=httpx.Timeout(30.0, connect=10.0),  # Increased connect timeout
+            timeout=timeout,
             follow_redirects=True
         )
     
@@ -199,16 +206,45 @@ class APIClient:
             self.logger.error(f"Failed to get agent details: {str(e)}")
             return None
     
-    def get_project_progress(self, project_id: str) -> Optional[Dict[str, Any]]:
-        """Get current progress for a project."""
-        try:
-            with self._get_client() as client:
-                response = client.get(f"/api/v1/progress/{project_id}")
-                response.raise_for_status()
-                return response.json()
-        except Exception as e:
-            self.logger.error(f"Failed to get project progress: {str(e)}")
-            return None
+    def get_project_progress(self, project_id: str, extended_timeout: bool = False) -> Optional[Dict[str, Any]]:
+        """Get current progress for a project with enhanced error handling."""
+        max_retries = 3 if extended_timeout else 2
+        retry_delay = 2.0 if extended_timeout else 1.0
+        
+        for attempt in range(max_retries):
+            try:
+                with self._get_client(extended_timeout=extended_timeout) as client:
+                    response = client.get(f"/api/v1/progress/{project_id}")
+                    response.raise_for_status()
+                    return response.json()
+                    
+            except httpx.TimeoutException as e:
+                self.logger.warning(f"Progress request timeout (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    self.logger.error(f"Progress request timed out after {max_retries} attempts")
+                    return None
+                    
+            except httpx.ConnectError as e:
+                self.logger.warning(f"Progress request connection failed (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    self.logger.error(f"Progress request connection failed after {max_retries} attempts")
+                    return None
+                    
+            except Exception as e:
+                self.logger.error(f"Failed to get project progress (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    return None
+        
+        return None
     
     def get_project_logs(self, project_id: str, limit: int = 50) -> Optional[Dict[str, Any]]:
         """Get logs for a project."""
