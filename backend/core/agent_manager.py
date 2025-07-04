@@ -686,7 +686,7 @@ Make it production-ready and scalable.""",
     def _generate_ui(self, code_result: Dict[str, Any], requirements: Dict[str, Any]) -> Dict[str, Any]:
         """Step 7: Generate Streamlit UI with enhanced error handling and recovery."""
         self.progress_tracker.start_step(6, "ui_designer")
-        self.progress_tracker.add_log("Starting UI generation with enhanced error handling", "info", "ui_designer")
+        self.progress_tracker.add_log("Starting UI generation with thread-safe error handling", "info", "ui_designer")
         
         # Initialize variables for cleanup
         ui_result = None
@@ -723,7 +723,7 @@ Make it production-ready and scalable.""",
             time.sleep(0.5)
             self.progress_tracker.update_step_progress(6, 35, "Communicating with UI designer agent")
             
-            # Enhanced UI generation with timeout and retry logic
+            # Enhanced UI generation with thread-safe timeout and retry logic
             max_retries = 2
             retry_count = 0
             
@@ -734,33 +734,25 @@ Make it production-ready and scalable.""",
                     # Create a more focused prompt to reduce processing time
                     ui_prompt = self._create_focused_ui_prompt(requirements_text, final_code, retry_count)
                     
-                    # Set a reasonable timeout for the AI conversation
-                    import signal
+                    # Use thread-safe timeout mechanism instead of signal
+                    ui_result = self._run_ui_generation_with_timeout(
+                        ui_prompt, 
+                        timeout_seconds=90,
+                        max_turns=1 if retry_count > 0 else 2
+                    )
                     
-                    def timeout_handler(signum, frame):
-                        raise TimeoutError("UI generation timed out")
-                    
-                    # Set timeout for 90 seconds (increased from default)
-                    signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.alarm(90)
-                    
-                    try:
-                        ui_result = self.agents['user_proxy'].initiate_chat(
-                            self.agents['ui_designer'],
-                            message=ui_prompt,
-                            max_turns=1 if retry_count > 0 else 2  # Reduce turns on retry
-                        )
-                        signal.alarm(0)  # Cancel timeout
+                    if ui_result:
                         break  # Success, exit retry loop
+                    else:
+                        raise Exception("UI generation returned no result")
                         
-                    except TimeoutError:
-                        signal.alarm(0)  # Cancel timeout
-                        self.logger.warning(f"UI generation timed out on attempt {retry_count + 1}")
-                        if retry_count == max_retries:
-                            raise TimeoutError("UI generation timed out after all retries")
-                        retry_count += 1
-                        time.sleep(2)  # Brief pause before retry
-                        continue
+                except TimeoutError:
+                    self.logger.warning(f"UI generation timed out on attempt {retry_count + 1}")
+                    if retry_count == max_retries:
+                        raise TimeoutError("UI generation timed out after all retries")
+                    retry_count += 1
+                    time.sleep(2)  # Brief pause before retry
+                    continue
                         
                 except Exception as gen_error:
                     self.logger.warning(f"UI generation attempt {retry_count + 1} failed: {str(gen_error)}")
@@ -861,6 +853,51 @@ Make it production-ready and scalable.""",
                 self.logger.error(f"Emergency fallback UI creation also failed: {str(fallback_error)}")
                 self.progress_tracker.complete_step(6, False, f"UI generation and fallback failed: {str(e)}")
                 raise Exception(f"UI generation failed and fallback creation failed: {str(e)}")
+    
+    def _run_ui_generation_with_timeout(self, ui_prompt: str, timeout_seconds: int = 90, max_turns: int = 2) -> Optional[Any]:
+        """Run UI generation with thread-safe timeout mechanism."""
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+        
+        result = None
+        exception = None
+        
+        def run_generation():
+            """Run the actual UI generation in a separate thread."""
+            nonlocal result, exception
+            try:
+                self.logger.debug("Starting UI generation chat")
+                result = self.agents['user_proxy'].initiate_chat(
+                    self.agents['ui_designer'],
+                    message=ui_prompt,
+                    max_turns=max_turns
+                )
+                self.logger.debug("UI generation chat completed successfully")
+            except Exception as e:
+                self.logger.error(f"UI generation chat failed: {str(e)}")
+                exception = e
+        
+        try:
+            # Use ThreadPoolExecutor for timeout control
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(run_generation)
+                
+                try:
+                    # Wait for completion with timeout
+                    future.result(timeout=timeout_seconds)
+                    
+                    if exception:
+                        raise exception
+                    
+                    return result
+                    
+                except FutureTimeoutError:
+                    self.logger.warning(f"UI generation timed out after {timeout_seconds} seconds")
+                    raise TimeoutError(f"UI generation timed out after {timeout_seconds} seconds")
+                    
+        except Exception as e:
+            self.logger.error(f"Thread-safe UI generation failed: {str(e)}")
+            raise e
     
     def _create_focused_ui_prompt(self, requirements_text: str, final_code: str, retry_count: int) -> str:
         """Create a focused UI generation prompt based on retry count."""
