@@ -453,8 +453,39 @@ def show_generation_progress(project_id: str):
     extended_timeout_used = False
     completion_checked = False
     
+    def check_completion_and_display(reason=""):
+        """Helper function to check completion and display results if found."""
+        try:
+            completion_status = api_client.check_project_completion_fallback(project_id)
+            if completion_status and completion_status.get('is_completed'):
+                # Project is already completed! Show success and results
+                status_text.success(f"✅ **Project Already Completed!** {reason}")
+                progress_bar.progress(1.0)
+                
+                # Update all steps to completed
+                for j, step_name_j in enumerate(step_names):
+                    step_placeholders[j].success(f"✅ **{j+1}. {step_name_j}** - Completed")
+                
+                # Display the results immediately
+                result = completion_status.get('result')
+                if result:
+                    st.success("🎉 Project completed! Displaying results immediately.")
+                    display_results(result, use_expanders=False)
+                    return True
+                else:
+                    st.warning("Project completed but results are being processed. Please check Project History.")
+                    return True
+        except Exception as e:
+            st.warning(f"Completion check failed: {str(e)}")
+        return False
+    
     while poll_count < max_polls:
         try:
+            # AGGRESSIVE COMPLETION CHECK - Check every 3rd poll during suspected UI generation
+            if poll_count > 0 and (last_progress_percentage > 85 or ui_generation_detected) and poll_count % 3 == 0:
+                if check_completion_and_display(f"(Periodic check #{poll_count//3})"):
+                    return
+            
             # Detect if we're in UI generation phase and use extended timeout
             current_step = None
             if poll_count > 0:  # Skip first poll to establish baseline
@@ -463,7 +494,10 @@ def show_generation_progress(project_id: str):
                     if last_progress_percentage > 85:  # Likely in UI generation phase
                         if not ui_generation_detected:
                             ui_generation_detected = True
-                            status_text.info("🎨 **Entering UI Generation Phase** - This may take longer...")
+                            status_text.info("🎨 **Entering UI Generation Phase** - Checking completion...")
+                            # IMMEDIATE COMPLETION CHECK when entering UI generation
+                            if check_completion_and_display("(UI Generation entry)"):
+                                return
                         extended_timeout_used = True
                 except:
                     pass
@@ -517,6 +551,29 @@ def show_generation_progress(project_id: str):
                         if agent_name == 'ui_designer' or 'UI' in step_desc:
                             if not ui_generation_detected:
                                 ui_generation_detected = True
+                                status_text.info("🎨 **Starting UI Generation** - Checking completion status...")
+                                
+                                # IMMEDIATE COMPLETION CHECK FOR UI GENERATION
+                                completion_status = api_client.check_project_completion_fallback(project_id)
+                                if completion_status and completion_status.get('is_completed'):
+                                    # Project is already completed! Show success and results
+                                    status_text.success("✅ **Project Already Completed!**")
+                                    progress_bar.progress(1.0)
+                                    
+                                    # Update all steps to completed
+                                    for j, step_name_j in enumerate(step_names):
+                                        step_placeholders[j].success(f"✅ **{j+1}. {step_name_j}** - Completed")
+                                    
+                                    # Display the results immediately
+                                    result = completion_status.get('result')
+                                    if result:
+                                        st.success("🎉 Project completed! Found via smart UI generation detection.")
+                                        display_results(result, use_expanders=False)
+                                        return
+                                    else:
+                                        st.warning("Project completed but results are being processed. Please check Project History.")
+                                        return
+                                
                                 status_text.info("🎨 **Starting UI Generation** - This step may take longer due to AI processing...")
                             else:
                                 status_text.info(f"🎨 **{step_desc}** - AI is generating your interface...")
@@ -541,8 +598,34 @@ def show_generation_progress(project_id: str):
                         step_progress = step.get('progress_percentage', 0)
                         
                         if status == 'running':
-                            # Special display for UI generation
+                            # Special handling for UI generation step (step 7)
                             if i == 6:  # UI Generation step
+                                # Check if project is already completed when UI generation starts
+                                if not ui_generation_detected:
+                                    ui_generation_detected = True
+                                    status_text.info("🎨 **Starting UI Generation** - Checking completion status...")
+                                    
+                                    # SMART COMPLETION CHECK FOR UI GENERATION
+                                    completion_status = api_client.check_project_completion_fallback(project_id)
+                                    if completion_status and completion_status.get('is_completed'):
+                                        # Project is already completed! Show success and results
+                                        status_text.success("✅ **Project Already Completed!**")
+                                        progress_bar.progress(1.0)
+                                        
+                                        # Update all steps to completed
+                                        for j, step_name_j in enumerate(step_names):
+                                            step_placeholders[j].success(f"✅ **{j+1}. {step_name_j}** - Completed")
+                                        
+                                        # Display the results immediately
+                                        result = completion_status.get('result')
+                                        if result:
+                                            st.success("🎉 Project completed! Found via smart UI generation detection.")
+                                            display_results(result, use_expanders=False)
+                                            return
+                                        else:
+                                            st.warning("Project completed but results are being processed. Please check Project History.")
+                                            return
+                                
                                 step_placeholders[i].info(f"🎨 **{i+1}. {step_name}** - AI Processing ({step_progress:.0f}%)")
                             else:
                                 step_placeholders[i].info(f"🔄 **{i+1}. {step_name}** - Running ({step_progress:.0f}%)")
@@ -560,6 +643,12 @@ def show_generation_progress(project_id: str):
             
             else:
                 consecutive_errors += 1
+                
+                # AGGRESSIVE COMPLETION CHECK during errors - especially for UI generation
+                if consecutive_errors >= 3 and (ui_generation_detected or last_progress_percentage > 85):
+                    if check_completion_and_display(f"(Error check #{consecutive_errors})"):
+                        return
+                
                 if consecutive_errors <= 3:
                     # Don't show warnings for the first few attempts
                     pass
