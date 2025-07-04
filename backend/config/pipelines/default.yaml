@@ -1,0 +1,48 @@
+description: Standard multi-agent development pipeline
+failure_strategy: stop
+global_timeout_seconds: null
+max_parallel_steps: 3
+metadata: null
+name: default
+steps:
+- agent_type: requirement_analyst
+  config_type: standard
+  execution_mode: sequential
+  optional: false
+- agent_type: python_coder
+  config_type: coding
+  depends_on:
+  - requirement_analyst
+  execution_mode: sequential
+  optional: false
+- agent_type: code_reviewer
+  config_type: review
+  depends_on:
+  - python_coder
+  execution_mode: sequential
+  optional: false
+- agent_type: test_generator
+  config_type: coding
+  depends_on:
+  - python_coder
+  execution_mode: parallel
+  optional: false
+- agent_type: documentation_writer
+  config_type: creative
+  depends_on:
+  - code_reviewer
+  execution_mode: parallel
+  optional: false
+- agent_type: deployment_engineer
+  config_type: standard
+  depends_on:
+  - test_generator
+  execution_mode: sequential
+  optional: false
+- agent_type: ui_designer
+  config_type: creative
+  depends_on:
+  - documentation_writer
+  execution_mode: sequential
+  optional: false
+version: 1.0.0

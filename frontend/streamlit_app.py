@@ -104,11 +104,12 @@ def check_backend_connection():
                 st.rerun()
         
         with col2:
-            if st.button("🔍 Show Advanced Diagnostics", key="show_diagnostics"):
-                st.session_state.show_diagnostics = True
+            show_diagnostics = st.button("🔍 Show Advanced Diagnostics", key="show_diagnostics")
         
         # Show advanced diagnostics if requested
-        if st.session_state.get('show_diagnostics', False):
+        if show_diagnostics or st.session_state.get('show_diagnostics', False):
+            if show_diagnostics:
+                st.session_state.show_diagnostics = True
             st.subheader("🔍 Advanced Diagnostics")
             
             # Test basic connectivity

@@ -153,7 +153,7 @@ class ProgressService:
             if overall_success and not has_warnings:
                 self.project_progress[project_id]['current_progress']['progress_percentage'] = 100.0
                 self.add_log_entry(project_id, LogLevel.INFO, "Project completed successfully")
-            elif has_warnings but not has_failures:
+            elif has_warnings and not has_failures:
                 self.project_progress[project_id]['current_progress']['progress_percentage'] = 95.0
                 warning_count = len(pipeline_status.get('warnings', []))
                 warning_msg = f"Project completed with warnings: {warning_count} warnings"
