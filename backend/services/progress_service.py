@@ -135,19 +135,48 @@ class ProgressService:
         self.project_progress[project_id]['updated_at'] = datetime.now()
     
     def complete_project(self, project_id: str, result: Dict[str, Any]):
-        """Mark project as completed and store result."""
+        """Mark project as completed and store result with enhanced status handling."""
         if project_id in self.project_progress:
+            # Check if this is a partial completion with warnings
+            pipeline_status = result.get('pipeline_status', {})
+            has_warnings = len(pipeline_status.get('warnings', [])) > 0
+            has_failures = len(pipeline_status.get('failed_steps', [])) > 0
+            overall_success = pipeline_status.get('overall_success', True)
+            
+            # Update progress based on actual completion status
             self.project_progress[project_id]['current_progress']['is_completed'] = True
             self.project_progress[project_id]['current_progress']['is_running'] = False
-            self.project_progress[project_id]['current_progress']['progress_percentage'] = 100.0
+            self.project_progress[project_id]['current_progress']['has_failures'] = has_failures
             self.project_progress[project_id]['updated_at'] = datetime.now()
             
-            self.add_log_entry(project_id, LogLevel.INFO, "Project completed successfully")
+            # Set progress percentage based on completion status
+            if overall_success and not has_warnings:
+                self.project_progress[project_id]['current_progress']['progress_percentage'] = 100.0
+                self.add_log_entry(project_id, LogLevel.INFO, "Project completed successfully")
+            elif has_warnings but not has_failures:
+                self.project_progress[project_id]['current_progress']['progress_percentage'] = 95.0
+                warning_count = len(pipeline_status.get('warnings', []))
+                warning_msg = f"Project completed with warnings: {warning_count} warnings"
+                self.add_log_entry(project_id, LogLevel.WARNING, warning_msg)
+            else:
+                # Partial completion with some failures
+                completed_steps = len(pipeline_status.get('completed_steps', []))
+                total_possible_steps = 7  # Total pipeline steps
+                partial_percentage = min(90.0, (completed_steps / total_possible_steps) * 100)
+                self.project_progress[project_id]['current_progress']['progress_percentage'] = partial_percentage
+                failed_count = len(pipeline_status.get('failed_steps', []))
+                partial_msg = f"Project completed partially: {completed_steps} steps completed, {failed_count} failed"
+                self.add_log_entry(project_id, LogLevel.WARNING, partial_msg)
+            
+            # Add warnings to logs
+            for warning in pipeline_status.get('warnings', []):
+                self.add_log_entry(project_id, LogLevel.WARNING, f"Pipeline warning: {warning}")
         
         # Store the complete result
         self.project_results[project_id] = result
         
-        self.logger.info(f"Project {project_id} completed and result stored")
+        completion_status = "successfully" if result.get('pipeline_status', {}).get('overall_success', True) else "with issues"
+        self.logger.info(f"Project {project_id} completed {completion_status} and result stored")
     
     def fail_project(self, project_id: str, error_message: str):
         """Mark project as failed."""

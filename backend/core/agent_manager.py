@@ -105,57 +105,121 @@ class AgentManager:
             raise
     
     def process_user_input(self, user_input: str, project_name: str = None) -> Dict[str, Any]:
-        """Process user input through the complete agent pipeline."""
+        """Process user input through the complete agent pipeline with robust error handling."""
         if not project_name:
             project_name = f"project_{generate_timestamp()}"
         
         self.current_project = project_name
-        self.logger.info(f"Starting pipeline for project: {project_name}")
+        self.logger.info(f"Starting resilient pipeline for project: {project_name}")
         
-        try:
-            # Step 1: Requirements Analysis
-            requirements = self._analyze_requirements(user_input)
-            
-            # Step 2: Code Generation
-            code_result = self._generate_code(requirements)
-            
-            # Step 3: Code Review and Iteration
-            reviewed_code = self._review_code(code_result, requirements)
-            
-            # Step 4: Documentation Generation
-            documentation = self._generate_documentation(reviewed_code, requirements)
-            
-            # Step 5: Test Case Generation
-            tests = self._generate_tests(reviewed_code, requirements)
-            
-            # Step 6: Deployment Configuration
-            deployment_config = self._generate_deployment_config(reviewed_code, requirements)
-            
-            # Step 7: UI Generation
-            ui_code = self._generate_ui(reviewed_code, requirements)
-            
-            # Compile final results
-            final_result = {
-                'project_name': project_name,
-                'timestamp': datetime.now().isoformat(),
-                'user_input': user_input,
-                'requirements': requirements,
-                'code': reviewed_code,
-                'documentation': documentation,
-                'tests': tests,
-                'deployment': deployment_config,
-                'ui': ui_code,
-                'progress': self.progress_tracker.get_progress()
+        # Initialize results with defaults to ensure we always have something to return
+        pipeline_results = {
+            'project_name': project_name,
+            'timestamp': datetime.now().isoformat(),
+            'user_input': user_input,
+            'requirements': None,
+            'code': None,
+            'documentation': None,
+            'tests': None,
+            'deployment': None,
+            'ui': None,
+            'pipeline_status': {
+                'completed_steps': [],
+                'failed_steps': [],
+                'warnings': [],
+                'has_partial_results': False,
+                'overall_success': False
             }
-            
-            # Save results
-            self._save_project_results(final_result)
-            
-            return final_result
-            
-        except Exception as e:
-            self.logger.error(f"Pipeline failed: {str(e)}")
-            raise
+        }
+        
+        # Step 1: Requirements Analysis (Critical - must succeed)
+        requirements = self._execute_step_with_resilience(
+            step_name="requirements_analysis",
+            step_function=lambda: self._analyze_requirements(user_input),
+            fallback_function=lambda: self._create_fallback_requirements(user_input),
+            pipeline_results=pipeline_results,
+            is_critical=True
+        )
+        pipeline_results['requirements'] = requirements
+        
+        # Step 2: Code Generation (Critical - must succeed)
+        code_result = self._execute_step_with_resilience(
+            step_name="code_generation",
+            step_function=lambda: self._generate_code(requirements),
+            fallback_function=lambda: self._create_fallback_code(requirements),
+            pipeline_results=pipeline_results,
+            is_critical=True
+        )
+        pipeline_results['code'] = code_result
+        
+        # Step 3: Code Review (Important but not critical)
+        reviewed_code = self._execute_step_with_resilience(
+            step_name="code_review",
+            step_function=lambda: self._review_code(code_result, requirements),
+            fallback_function=lambda: self._create_fallback_review(code_result),
+            pipeline_results=pipeline_results,
+            is_critical=False
+        )
+        pipeline_results['code'] = reviewed_code or code_result
+        
+        # Step 4: Documentation Generation (Optional)
+        documentation = self._execute_step_with_resilience(
+            step_name="documentation",
+            step_function=lambda: self._generate_documentation(pipeline_results['code'], requirements),
+            fallback_function=lambda: self._create_fallback_documentation(pipeline_results['code'], requirements),
+            pipeline_results=pipeline_results,
+            is_critical=False
+        )
+        pipeline_results['documentation'] = documentation
+        
+        # Step 5: Test Generation (Optional)
+        tests = self._execute_step_with_resilience(
+            step_name="test_generation",
+            step_function=lambda: self._generate_tests(pipeline_results['code'], requirements),
+            fallback_function=lambda: self._create_fallback_tests(pipeline_results['code']),
+            pipeline_results=pipeline_results,
+            is_critical=False
+        )
+        pipeline_results['tests'] = tests
+        
+        # Step 6: Deployment Configuration (Optional)
+        deployment_config = self._execute_step_with_resilience(
+            step_name="deployment_config",
+            step_function=lambda: self._generate_deployment_config(pipeline_results['code'], requirements),
+            fallback_function=lambda: self._create_fallback_deployment(pipeline_results['code']),
+            pipeline_results=pipeline_results,
+            is_critical=False
+        )
+        pipeline_results['deployment'] = deployment_config
+        
+        # Step 7: UI Generation (Optional but important)
+        ui_code = self._execute_step_with_resilience(
+            step_name="ui_generation",
+            step_function=lambda: self._generate_ui(pipeline_results['code'], requirements),
+            fallback_function=lambda: self._create_fallback_ui_result(requirements, pipeline_results['code']),
+            pipeline_results=pipeline_results,
+            is_critical=False
+        )
+        pipeline_results['ui'] = ui_code
+        
+        # Finalize results
+        pipeline_results['progress'] = self.progress_tracker.get_progress()
+        pipeline_results['pipeline_status']['overall_success'] = len(pipeline_results['pipeline_status']['failed_steps']) == 0
+        pipeline_results['pipeline_status']['has_partial_results'] = len(pipeline_results['pipeline_status']['completed_steps']) > 0
+        
+        # Always save results, even if partial
+        try:
+            self._save_project_results(pipeline_results)
+        except Exception as save_error:
+            self.logger.warning(f"Failed to save results: {str(save_error)}")
+            pipeline_results['pipeline_status']['warnings'].append(f"Results saving failed: {str(save_error)}")
+        
+        # Log final status
+        completed_count = len(pipeline_results['pipeline_status']['completed_steps'])
+        failed_count = len(pipeline_results['pipeline_status']['failed_steps'])
+        self.logger.info(f"Pipeline completed: {completed_count} steps succeeded, {failed_count} steps failed")
+        
+        return pipeline_results
     
     def _analyze_requirements(self, user_input: str) -> Dict[str, Any]:
         """Step 1: Analyze requirements from user input."""
@@ -1207,3 +1271,460 @@ if __name__ == "__main__":
         # Clear any existing loop tracker
         if hasattr(self, 'current_loop_tracker'):
             delattr(self, 'current_loop_tracker')
+    
+    def _execute_step_with_resilience(self, step_name: str, step_function, fallback_function, 
+                                    pipeline_results: Dict[str, Any], is_critical: bool = False) -> Any:
+        """Execute a pipeline step with resilience and fallback handling."""
+        self.logger.info(f"Executing step: {step_name} (critical: {is_critical})")
+        
+        try:
+            # Attempt to execute the main step function
+            result = step_function()
+            
+            # Mark step as completed
+            pipeline_results['pipeline_status']['completed_steps'].append(step_name)
+            self.logger.info(f"Step {step_name} completed successfully")
+            
+            return result
+            
+        except Exception as e:
+            error_msg = str(e)
+            self.logger.error(f"Step {step_name} failed: {error_msg}")
+            
+            # Check if this is an agent limit error (max_consecutive_auto_reply)
+            is_agent_limit_error = self._is_agent_limit_error(error_msg)
+            
+            if is_agent_limit_error:
+                self.logger.warning(f"Step {step_name} hit agent limit, attempting graceful degradation")
+                pipeline_results['pipeline_status']['warnings'].append(
+                    f"{step_name}: Agent hit max_consecutive_auto_reply limit"
+                )
+            
+            # Try fallback function
+            try:
+                self.logger.info(f"Attempting fallback for step: {step_name}")
+                fallback_result = fallback_function()
+                
+                # Mark as completed with warning
+                pipeline_results['pipeline_status']['completed_steps'].append(f"{step_name}_fallback")
+                pipeline_results['pipeline_status']['warnings'].append(
+                    f"{step_name}: Completed using fallback due to: {error_msg}"
+                )
+                
+                self.logger.info(f"Step {step_name} completed using fallback")
+                return fallback_result
+                
+            except Exception as fallback_error:
+                self.logger.error(f"Fallback for step {step_name} also failed: {str(fallback_error)}")
+                
+                # Mark step as failed
+                pipeline_results['pipeline_status']['failed_steps'].append(step_name)
+                
+                if is_critical:
+                    # For critical steps, we must have some result
+                    self.logger.error(f"Critical step {step_name} failed completely, creating minimal fallback")
+                    minimal_result = self._create_minimal_fallback(step_name, pipeline_results)
+                    pipeline_results['pipeline_status']['warnings'].append(
+                        f"{step_name}: Using minimal fallback due to complete failure"
+                    )
+                    return minimal_result
+                else:
+                    # For non-critical steps, we can continue without this result
+                    self.logger.warning(f"Non-critical step {step_name} failed, continuing pipeline")
+                    pipeline_results['pipeline_status']['warnings'].append(
+                        f"{step_name}: Skipped due to failure: {error_msg}"
+                    )
+                    return None
+    
+    def _is_agent_limit_error(self, error_msg: str) -> bool:
+        """Check if the error is related to agent limits."""
+        limit_indicators = [
+            "max_consecutive_auto_reply",
+            "Maximum number of consecutive auto-replies",
+            "TERMINATING RUN",
+            "auto-reply limit",
+            "consecutive replies"
+        ]
+        
+        error_lower = error_msg.lower()
+        return any(indicator.lower() in error_lower for indicator in limit_indicators)
+    
+    def _create_minimal_fallback(self, step_name: str, pipeline_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Create minimal fallback results for critical steps."""
+        if step_name == "requirements_analysis":
+            return self._create_fallback_requirements(pipeline_results.get('user_input', ''))
+        elif step_name == "code_generation":
+            return self._create_fallback_code(pipeline_results.get('requirements', {}))
+        else:
+            return {
+                'error': f"Step {step_name} failed completely",
+                'fallback_used': True,
+                'timestamp': datetime.now().isoformat()
+            }
+    
+    def _create_fallback_requirements(self, user_input: str) -> Dict[str, Any]:
+        """Create fallback requirements when AI analysis fails."""
+        self.logger.info("Creating fallback requirements")
+        
+        return {
+            'functional_requirements': [
+                f"Implement functionality based on: {user_input[:200]}{'...' if len(user_input) > 200 else ''}",
+                "Provide basic user interface",
+                "Handle user input and provide output",
+                "Include error handling"
+            ],
+            'non_functional_requirements': [
+                "Should be reliable and user-friendly",
+                "Should handle errors gracefully",
+                "Should provide clear feedback to users"
+            ],
+            'constraints': [
+                "Python-based implementation",
+                "Use standard libraries where possible"
+            ],
+            'assumptions': [
+                "User has basic Python environment",
+                "Standard web browser available for UI"
+            ],
+            'questions': [],
+            'recommendations': [
+                "Consider adding logging for debugging",
+                "Implement comprehensive error handling"
+            ],
+            'fallback_used': True,
+            'original_input': user_input,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def _create_fallback_code(self, requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """Create fallback code when AI generation fails."""
+        self.logger.info("Creating fallback code")
+        
+        functional_reqs = requirements.get('functional_requirements', [])
+        main_functionality = functional_reqs[0] if functional_reqs else "Basic functionality"
+        
+        fallback_code = f'''#!/usr/bin/env python3
+"""
+Fallback implementation generated when AI code generation failed.
+Based on requirements: {main_functionality}
+"""
+
+import logging
+import sys
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+class Application:
+    """Main application class - fallback implementation."""
+    
+    def __init__(self):
+        """Initialize the application."""
+        self.logger = logger
+        self.logger.info("Application initialized (fallback mode)")
+    
+    def process_input(self, user_input: str) -> Dict[str, Any]:
+        """Process user input and return results."""
+        try:
+            self.logger.info(f"Processing input: {{user_input[:50]}}...")
+            
+            # Basic processing logic
+            result = {{
+                "input": user_input,
+                "processed": True,
+                "message": "Input processed successfully using fallback implementation",
+                "timestamp": datetime.now().isoformat(),
+                "method": "fallback"
+            }}
+            
+            self.logger.info("Input processed successfully")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Error processing input: {{str(e)}}")
+            return {{
+                "input": user_input,
+                "processed": False,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+                "method": "fallback"
+            }}
+    
+    def run(self):
+        """Run the application."""
+        self.logger.info("Starting application (fallback mode)")
+        
+        try:
+            # Basic interactive loop
+            while True:
+                user_input = input("Enter input (or 'quit' to exit): ")
+                
+                if user_input.lower() in ['quit', 'exit', 'q']:
+                    break
+                
+                result = self.process_input(user_input)
+                print(f"Result: {{result}}")
+                
+        except KeyboardInterrupt:
+            self.logger.info("Application interrupted by user")
+        except Exception as e:
+            self.logger.error(f"Application error: {{str(e)}}")
+        finally:
+            self.logger.info("Application shutting down")
+
+def main():
+    """Main entry point."""
+    app = Application()
+    app.run()
+
+if __name__ == "__main__":
+    main()
+'''
+        
+        return {
+            'main_code': fallback_code,
+            'additional_modules': [],
+            'full_response': f"# Fallback Code Generated\\n\\nThis code was generated as a fallback when AI code generation failed.\\n\\n```python\\n{fallback_code}\\n```",
+            'fallback_used': True,
+            'requirements_used': requirements,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def _create_fallback_review(self, code_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Create fallback review when AI review fails."""
+        self.logger.info("Creating fallback code review")
+        
+        return {
+            'final_code': code_result.get('main_code', ''),
+            'review_feedback': [
+                "Code review completed using fallback method",
+                "Manual review recommended for production use",
+                "Basic structure appears functional"
+            ],
+            'original_code': code_result.get('main_code', ''),
+            'additional_modules': code_result.get('additional_modules', []),
+            'loop_summary': {
+                'total_iterations': 1,
+                'final_quality_score': 0.7,
+                'final_convergence_score': 0.7,
+                'total_feedback_items': 1,
+                'loop_duration': 0.0
+            },
+            'fallback_used': True,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def _create_fallback_documentation(self, code_result: Dict[str, Any], requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """Create fallback documentation when AI generation fails."""
+        self.logger.info("Creating fallback documentation")
+        
+        app_name = "Generated Application"
+        functional_reqs = requirements.get('functional_requirements', [])
+        main_functionality = functional_reqs[0] if functional_reqs else "Basic functionality"
+        
+        fallback_readme = f'''# {app_name}
+
+## Overview
+{main_functionality}
+
+This documentation was generated using a fallback method when AI documentation generation failed.
+
+## Installation
+
+1. Ensure you have Python 3.7+ installed
+2. Install required dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## Usage
+
+### Basic Usage
+```python
+python main.py
+```
+
+### Features
+- Basic functionality as specified in requirements
+- Error handling and logging
+- User-friendly interface
+
+## Configuration
+The application uses default configuration. Modify the code directly for custom settings.
+
+## Troubleshooting
+
+### Common Issues
+- **Import Errors**: Ensure all dependencies are installed
+- **Runtime Errors**: Check logs for detailed error messages
+- **Performance Issues**: Consider optimizing based on your specific use case
+
+## Support
+This is a generated application. For support, refer to the code comments and logs.
+
+## License
+Generated code - please add appropriate license as needed.
+'''
+        
+        return {
+            'readme': fallback_readme,
+            'fallback_used': True,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def _create_fallback_tests(self, code_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Create fallback tests when AI generation fails."""
+        self.logger.info("Creating fallback tests")
+        
+        fallback_test_code = '''#!/usr/bin/env python3
+"""
+Fallback test suite generated when AI test generation failed.
+"""
+
+import unittest
+import sys
+import os
+
+# Add the main module to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+class TestApplication(unittest.TestCase):
+    """Basic test cases for the application."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        # Import your main application class here
+        # self.app = Application()
+        pass
+    
+    def test_basic_functionality(self):
+        """Test basic functionality."""
+        # Add basic tests here
+        self.assertTrue(True, "Placeholder test - replace with actual tests")
+    
+    def test_error_handling(self):
+        """Test error handling."""
+        # Add error handling tests here
+        self.assertTrue(True, "Placeholder test - replace with actual tests")
+    
+    def tearDown(self):
+        """Clean up after tests."""
+        pass
+
+class TestFallbackGeneration(unittest.TestCase):
+    """Test that fallback generation works."""
+    
+    def test_fallback_active(self):
+        """Test that fallback test generation is working."""
+        self.assertTrue(True, "Fallback test generation is active")
+
+if __name__ == '__main__':
+    # Run the tests
+    unittest.main(verbosity=2)
+'''
+        
+        return {
+            'test_code': fallback_test_code,
+            'additional_tests': [],
+            'full_response': f"# Fallback Tests Generated\\n\\n```python\\n{fallback_test_code}\\n```",
+            'fallback_used': True,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def _create_fallback_deployment(self, code_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Create fallback deployment config when AI generation fails."""
+        self.logger.info("Creating fallback deployment configuration")
+        
+        fallback_deployment = '''# Fallback Deployment Configuration
+
+## Docker Configuration
+
+### Dockerfile
+```dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+EXPOSE 8000
+
+CMD ["python", "main.py"]
+```
+
+### docker-compose.yml
+```yaml
+version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./logs:/app/logs
+```
+
+## Basic Deployment Steps
+
+1. **Prepare Environment**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Run Application**
+   ```bash
+   python main.py
+   ```
+
+3. **Docker Deployment**
+   ```bash
+   docker-compose up -d
+   ```
+
+## Environment Variables
+- Set any required environment variables in your deployment environment
+- Check the main application code for specific configuration needs
+
+## Monitoring
+- Check application logs for runtime information
+- Monitor system resources as needed
+
+**Note**: This is a fallback deployment configuration. Customize based on your specific requirements.
+'''
+        
+        return {
+            'deployment_configs': fallback_deployment,
+            'fallback_used': True,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def _create_fallback_ui_result(self, requirements: Dict[str, Any], code_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Create fallback UI result when AI generation fails."""
+        self.logger.info("Creating fallback UI result")
+        
+        fallback_ui = self._create_fallback_ui(requirements, code_result.get('final_code', ''))
+        
+        return {
+            'streamlit_app': fallback_ui,
+            'additional_ui_files': [],
+            'full_response': f"# Fallback UI Generated\\n\\n```python\\n{fallback_ui}\\n```",
+            'generation_metadata': {
+                'retry_count': 0,
+                'generation_method': 'fallback',
+                'code_blocks_found': 1,
+                'response_length': len(fallback_ui)
+            },
+            'fallback_used': True,
+            'timestamp': datetime.now().isoformat()
+        }
